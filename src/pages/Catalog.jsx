@@ -24,7 +24,7 @@ export default function Catalog({ user }) {
       const { data: customer } = await supabase
         .from('customerinfo')
         .select('CustomerID')
-        .or(`EmailID.eq.${user.email},MobileNumber.eq.${user.phone}`)
+        .or(`EmailID.eq.${user.Email},MobileNumber.eq.${user.phone}`)
         .single();
 
       if (customer) {
