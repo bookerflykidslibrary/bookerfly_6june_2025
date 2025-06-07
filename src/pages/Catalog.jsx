@@ -45,7 +45,7 @@ export default function Catalog({ user }) {
     const { minAge, maxAge, author, title } = filters;
     const filtersList = [];
     if (minAge) filtersList.push(`MinAge.gte.${minAge}`);
-    if (maxAge) filtersList.push(`Max_Age.lte.${maxAge}`);
+    if (maxAge) filtersList.push(`MaxAge.lte.${maxAge}`);
     if (author) filtersList.push(`Authors.ilike.%${author}%`);
     if (title) filtersList.push(`Title.ilike.%${title}%`);
 
@@ -147,7 +147,7 @@ export default function Catalog({ user }) {
                   <span onClick={() => toggleDescription(book.BookID)} className="text-blue-500 cursor-pointer underline">more</span>
                 )}
               </p>
-              <p className="text-sm text-gray-700 mt-1">Age Group: {book.MinAge} - {book.Max_Age}</p>
+              <p className="text-sm text-gray-700 mt-1">Age Group: {book.MinAge} - {book.MaxAge}</p>
               <a href="#" className="text-white bg-blue-500 px-3 py-1 mt-2 rounded hover:bg-blue-700 text-xs w-fit">Book for Me</a>
               <div className="mt-2 text-xs text-gray-700">
                 <div className="flex flex-col sm:flex-row gap-2">
