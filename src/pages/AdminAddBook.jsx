@@ -6,11 +6,14 @@ export default function AdminAddBook() {
   const [book, setBook] = useState(null);
   const [tags, setTags] = useState([]);
   const [thumbnailFile, setThumbnailFile] = useState(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState(null); // NEW: for preview URL
+  const [thumbnailPreview, setThumbnailPreview] = useState(null);
   const [selectedTags, setSelectedTags] = useState([]);
   const [locations, setLocations] = useState([]);
   const [location, setLocation] = useState('');
   const [copyNumber, setCopyNumber] = useState(1);
+  const [copyLocationID, setCopyLocationID] = useState('');
+  const [buyPrice, setBuyPrice] = useState('');
+  const [askPrice, setAskPrice] = useState('');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -24,7 +27,6 @@ export default function AdminAddBook() {
     fetchTagsAndLocations();
   }, []);
 
-  // Clean up preview URL on unmount or when thumbnailFile changes
   useEffect(() => {
     return () => {
       if (thumbnailPreview) {
@@ -136,6 +138,9 @@ export default function AdminAddBook() {
       ISBN13: isbn,
       CopyNumber: copyNumber,
       CopyLocation: location,
+      CopyLocationID: copyLocationID,
+      BuyPrice: buyPrice,
+      AskPrice: askPrice,
       CopyBooked: false,
     });
 
@@ -144,8 +149,11 @@ export default function AdminAddBook() {
     setMessage('✅ Book and copy added successfully!');
     setBook(null);
     setThumbnailFile(null);
-    setThumbnailPreview(null); // Clear preview
+    setThumbnailPreview(null);
     setSelectedTags([]);
+    setCopyLocationID('');
+    setBuyPrice('');
+    setAskPrice('');
   };
 
   return (
@@ -162,7 +170,7 @@ export default function AdminAddBook() {
 
       {book && (
         <div className="mt-4 space-y-2">
-          {['ISBN13', 'Title', 'Authors', 'MinAge', 'MaxAge', 'Description', 'Reviews'].map((field) => (
+          {['ISBN13', 'Title', 'Authors', 'MinAge', 'MaxAge', 'Reviews'].map((field) => (
             <input
               key={field}
               type="text"
@@ -173,7 +181,14 @@ export default function AdminAddBook() {
             />
           ))}
 
-          {/* Show thumbnail preview if a file is selected, else show existing thumbnail */}
+          <textarea
+            value={book.Description || ''}
+            onChange={(e) => setBook({ ...book, Description: e.target.value })}
+            placeholder="Description"
+            rows={6}
+            className="w-full p-2 border border-gray-300 rounded resize-y"
+          />
+
           {thumbnailPreview ? (
             <img src={thumbnailPreview} alt="Thumbnail Preview" className="w-24 h-auto rounded" />
           ) : (
@@ -208,6 +223,33 @@ export default function AdminAddBook() {
               <option key={loc.id} value={loc.LocationName}>{loc.LocationName}</option>
             ))}
           </select>
+
+          <label className="block mt-2 text-sm font-semibold">Copy Location ID</label>
+          <input
+            type="text"
+            value={copyLocationID}
+            onChange={(e) => setCopyLocationID(e.target.value)}
+            placeholder="Enter Copy Location ID"
+            className="w-full p-2 border border-gray-300 rounded"
+          />
+
+          <label className="block mt-2 text-sm font-semibold">Buy Price</label>
+          <input
+            type="number"
+            value={buyPrice}
+            onChange={(e) => setBuyPrice(e.target.value)}
+            placeholder="Enter Buy Price"
+            className="w-full p-2 border border-gray-300 rounded"
+          />
+
+          <label className="block mt-2 text-sm font-semibold">Ask Price</label>
+          <input
+            type="number"
+            value={askPrice}
+            onChange={(e) => setAskPrice(e.target.value)}
+            placeholder="Enter Ask Price"
+            className="w-full p-2 border border-gray-300 rounded"
+          />
 
           <div className="mt-2">
             <p className="font-semibold">Tags:</p>
