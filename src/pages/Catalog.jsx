@@ -57,8 +57,8 @@ export default function CatalogPage() {
       // Filter based on optional user input
       if (filters.useFilters) {
         if (
-          (filters.minAge && book.Min_Age < filters.minAge) ||
-          (filters.maxAge && book.Max_Age > filters.maxAge) ||
+          (filters.minAge && book.MinAge < filters.minAge) ||
+          (filters.maxAge && book.MaxAge > filters.maxAge) ||
           (filters.author && !book.Authors?.toLowerCase().includes(filters.author.toLowerCase())) ||
           (filters.title && !book.Title?.toLowerCase().includes(filters.title.toLowerCase()))
         ) {
@@ -136,6 +136,7 @@ export default function CatalogPage() {
               src={book.Thumbnail || 'https://via.placeholder.com/100x150'}
               alt={book.Title}
               className="w-full h-48 object-cover mb-3 rounded"
+	      loading="lazy"
             />
             <h2 className="text-lg font-semibold text-purple-800">{book.Title}</h2>
             <p className="text-sm text-gray-700 italic mb-1">by {book.Authors}</p>
@@ -143,7 +144,7 @@ export default function CatalogPage() {
               {book.Description?.slice(0, 150)}...
             </p>
             <p className="text-sm mt-2 text-gray-800">
-              Age Group: {book.Min_Age} to {book.Max_Age}
+              Age Group: {book.MinAge} to {book.MaxAge}
             </p>
             <div className="mt-4 flex flex-col gap-2">
               <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
