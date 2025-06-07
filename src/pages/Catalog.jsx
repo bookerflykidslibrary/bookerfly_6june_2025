@@ -19,7 +19,6 @@ export default function Catalog({ user }) {
   const loadBooks = async () => {
     setLoading(true);
 
-    // Step 1: Get all read ISBNs if user is logged in
     let readISBNs = [];
     if (user) {
       const { data: customer } = await supabase
@@ -38,7 +37,6 @@ export default function Catalog({ user }) {
       }
     }
 
-    // Step 2: Get all books with at least one available copy
     let query = supabase
       .from('catalog')
       .select('*')
@@ -46,7 +44,7 @@ export default function Catalog({ user }) {
 
     const { minAge, maxAge, author, title } = filters;
     const filtersList = [];
-    if (minAge) filtersList.push(`Min_Age.gte.${minAge}`);
+    if (minAge) filtersList.push(`MinAge.gte.${minAge}`);
     if (maxAge) filtersList.push(`Max_Age.lte.${maxAge}`);
     if (author) filtersList.push(`Authors.ilike.%${author}%`);
     if (title) filtersList.push(`Title.ilike.%${title}%`);
@@ -57,7 +55,6 @@ export default function Catalog({ user }) {
 
     let { data: catalogBooks } = await query;
 
-    // Step 3: Filter by available copies and unread books
     const filteredBooks = [];
     for (const book of catalogBooks.sort(() => 0.5 - Math.random())) {
       const { data: copies } = await supabase
@@ -74,7 +71,6 @@ export default function Catalog({ user }) {
       book.minPrice = isFinite(minPrice) ? minPrice : null;
       filteredBooks.push(book);
 
-      // Step 4: Google Books Enrichment (if fields missing)
       if (!book.Thumbnail || !book.Description) {
         const enriched = await fetchGoogleBooks(book.ISBN13);
         if (enriched) {
@@ -144,16 +140,22 @@ export default function Catalog({ user }) {
               <h2 className="text-lg font-bold text-purple-800">{book.Title}</h2>
               <p className="text-sm text-gray-600 italic">{book.Authors}</p>
               <p className="text-xs text-gray-800 mt-1">
-                {expandedDesc[book.BookID] ? book.Description : `${book.Description?.substring(0, 120)}... `}
-                <span onClick={() => toggleDescription(book.BookID)} className="text-blue-500 cursor-pointer underline">more</span>
+                {book.Description?.length > 120 ? (
+                  expandedDesc[book.BookID] ? book.Description : `${book.Description?.substring(0, 120)}... `
+                ) : book.Description}
+                {book.Description?.length > 120 && (
+                  <span onClick={() => toggleDescription(book.BookID)} className="text-blue-500 cursor-pointer underline">more</span>
+                )}
               </p>
-              <p className="text-sm text-gray-700 mt-1">Age Group: {book.Min_Age} - {book.Max_Age}</p>
-              {book.minPrice && <p className="text-sm text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</p>}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <a href="#" className="text-white bg-blue-500 px-3 py-1 rounded hover:bg-blue-700 text-xs">Book for Me</a>
-                <a href={`https://www.amazon.in/dp/${book.ISBN13}/?tag=123432543556`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-orange-600 hover:underline">
-                  Buy on Amazon <FaExternalLinkAlt />
-                </a>
+              <p className="text-sm text-gray-700 mt-1">Age Group: {book.MinAge} - {book.Max_Age}</p>
+              <a href="#" className="text-white bg-blue-500 px-3 py-1 mt-2 rounded hover:bg-blue-700 text-xs w-fit">Book for Me</a>
+              <div className="mt-2 text-xs text-gray-700">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {book.minPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</span>}
+                  <a href={`https://www.amazon.in/dp/${book.ISBN13}/?tag=123432543556`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-orange-600 hover:underline">
+                    Buy on Amazon <FaExternalLinkAlt />
+                  </a>
+                </div>
               </div>
             </div>
           ))}
