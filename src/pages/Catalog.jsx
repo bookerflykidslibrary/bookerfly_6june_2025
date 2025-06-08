@@ -51,7 +51,7 @@ const Catalog = ({ user }) => {
         .from('catalog')
         .select('*')
         .range((page - 1) * 50, page * 50 - 1)
-        .order('random()',  ascending: true );
+        .order('random()');
 
       if (appliedFilters) {
         if (appliedFilters.minAge) query = query.gte('MinAge', appliedFilters.minAge);
