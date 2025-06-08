@@ -1,105 +1,52 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
+import { FaExternalLinkAlt } from 'react-icons/fa';
 
-const Catalog = ({ user }) => {
+const PAGE_SIZE = 50;
+
+export default function Catalog({ user }) {
   const [books, setBooks] = useState([]);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ minAge: '', maxAge: '', author: '', title: '' });
   const [appliedFilters, setAppliedFilters] = useState(null);
-  const [readISBNs, setReadISBNs] = useState([]);
-  const [hideReadMessage, setHideReadMessage] = useState(false);
+  const [hiddenRead, setHiddenRead] = useState(false);
+  const [expandedDesc, setExpandedDesc] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) fetchReadISBNs();
+    if (user?.email) fetchReadBooks(user.email);
   }, [user]);
 
   useEffect(() => {
     loadBooks();
-  }, [page, appliedFilters, readISBNs]);
+  }, [page, appliedFilters]);
 
-  const fetchReadISBNs = async () => {
-    try {
-      const { data: customer, error: customerError } = await supabase
-        .from('customerinfo')
-        .select('CustomerID')
-        .or(`EmailID.eq.${user.email},MobileNumber.eq.${user.phone}`)
-        .single();
+  const fetchReadBooks = async (email) => {
+    const { data: customer, error } = await supabase
+      .from('customerinfo')
+      .select('CustomerID')
+      .eq('EmailID', email)
+      .single();
 
-      if (customerError) console.error('Customer fetch error:', customerError);
-
-      if (customer) {
-        const { data: readHistory, error: historyError } = await supabase
-          .from('circulationhistory')
-          .select('ISBN13')
-          .eq('MemberID', customer.CustomerID);
-
-        if (historyError) console.error('Read history fetch error:', historyError);
-
-        if (readHistory) {
-          setReadISBNs(readHistory.map(b => b.ISBN13));
-          setHideReadMessage(true);
-        }
-      }
-    } catch (err) {
-      console.error('Fetch read ISBNs failed:', err);
+    if (error) {
+      console.error('Error fetching customer info:', error);
+      return;
     }
-  };
 
-  const loadBooks = async () => {
-    try {
-      let query = supabase
-        .from('catalog')
-        .select('*')
-        .range((page - 1) * 50, page * 50 - 1)
-        .order('random()', { ascending: true });
+    if (customer) {
+      const { data: readHistory, error: readError } = await supabase
+        .from('circulationhistory')
+        .select('ISBN13')
+        .eq('MemberID', customer.CustomerID);
 
-      if (appliedFilters) {
-        if (appliedFilters.minAge) query = query.gte('MinAge', appliedFilters.minAge);
-        if (appliedFilters.maxAge) query = query.lte('Max_Age', appliedFilters.maxAge);
-        if (appliedFilters.author) query = query.ilike('Authors', `%${appliedFilters.author}%`);
-        if (appliedFilters.title) query = query.ilike('Title', `%${appliedFilters.title}%`);
-      }
-
-      const { data: allBooks, error: bookError } = await query;
-      if (bookError) {
-        console.error('Error loading books:', bookError);
-        return;
-      }
-      if (!allBooks) {
-        console.warn('No books found');
+      if (readError) {
+        console.error('Error fetching read history:', readError);
         return;
       }
 
-      const { data: copyinfo, error: copyError } = await supabase
-        .from('copyinfo')
-        .select('ISBN13, CopyBooked, AskPrice');
-
-      if (copyError) {
-        console.error('Error loading copyinfo:', copyError);
-        return;
+      if (readHistory?.length) {
+        setHiddenRead(readHistory.map(b => b.ISBN13));
       }
-
-      const availableISBNs = new Set();
-      const askPriceMap = {};
-
-      copyinfo.forEach(copy => {
-        if (!copy.CopyBooked) availableISBNs.add(copy.ISBN13);
-        if (copy.AskPrice !== null) {
-          if (!askPriceMap[copy.ISBN13] || copy.AskPrice < askPriceMap[copy.ISBN13]) {
-            askPriceMap[copy.ISBN13] = copy.AskPrice;
-          }
-        }
-      });
-
-      let filteredBooks = allBooks.filter(book => availableISBNs.has(book.ISBN13));
-
-      if (readISBNs.length > 0) {
-        filteredBooks = filteredBooks.filter(book => !readISBNs.includes(book.ISBN13));
-      }
-
-      setBooks(filteredBooks);
-    } catch (err) {
-      console.error('loadBooks error:', err);
     }
   };
 
@@ -108,56 +55,137 @@ const Catalog = ({ user }) => {
     setPage(1);
   };
 
-  return (
-    <div className="p-4 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-center mb-4">Bookerfly Kids Library - Book Catalog</h1>
+  const loadBooks = async () => {
+    setLoading(true);
+    let query = supabase.from('catalog').select('*').limit(200); // fetch in bulk
 
-      <div className="bg-white p-4 rounded-lg shadow mb-6">
-        <div className="grid grid-cols-2 gap-4">
-          <input type="number" placeholder="Min Age" className="p-2 border rounded" value={filters.minAge} onChange={e => setFilters({ ...filters, minAge: e.target.value })} />
-          <input type="number" placeholder="Max Age" className="p-2 border rounded" value={filters.maxAge} onChange={e => setFilters({ ...filters, maxAge: e.target.value })} />
-          <input type="text" placeholder="Author" className="p-2 border rounded" value={filters.author} onChange={e => setFilters({ ...filters, author: e.target.value })} />
-          <input type="text" placeholder="Title" className="p-2 border rounded" value={filters.title} onChange={e => setFilters({ ...filters, title: e.target.value })} />
+    if (appliedFilters) {
+      const { minAge, maxAge, author, title } = appliedFilters;
+      if (minAge) query = query.gte('MinAge', minAge);
+      if (maxAge) query = query.lte('MaxAge', maxAge);
+      if (author) query = query.ilike('Authors', `%${author}%`);
+      if (title) query = query.ilike('Title', `%${title}%`);
+    }
+
+    const { data: catalogBooks, error: catalogError } = await query;
+    if (catalogError) {
+      console.error('Error loading books:', catalogError);
+      setLoading(false);
+      return;
+    }
+
+    const filteredBooks = [];
+    for (const book of catalogBooks) {
+      const { data: copies } = await supabase
+        .from('copyinfo')
+        .select('CopyBooked, AskPrice')
+        .eq('ISBN13', book.ISBN13);
+
+      const available = copies?.some(c => !c.CopyBooked);
+      if (!available) continue;
+
+      if (hiddenRead && hiddenRead.includes(book.ISBN13)) continue;
+
+      const minPrice = Math.min(...(copies?.map(c => c.AskPrice).filter(Boolean) ?? []));
+      book.minPrice = isFinite(minPrice) ? minPrice : null;
+      filteredBooks.push(book);
+
+      if ((!book.Thumbnail || !book.Description)) {
+        const enriched = await fetchGoogleBooks(book.ISBN13);
+        if (enriched) {
+          await supabase.from('catalog').update({
+            Thumbnail: enriched.thumbnail,
+            Description: enriched.description,
+          }).eq('ISBN13', book.ISBN13);
+          book.Thumbnail = enriched.thumbnail;
+          book.Description = enriched.description;
+        }
+      }
+    }
+
+    const randomized = filteredBooks.sort(() => 0.5 - Math.random());
+    const pagedBooks = randomized.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    setBooks(pagedBooks);
+    setLoading(false);
+  };
+
+  const fetchGoogleBooks = async (isbn) => {
+    try {
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+      const json = await res.json();
+      const item = json.items?.[0]?.volumeInfo;
+      if (!item) return null;
+      return {
+        thumbnail: item.imageLinks?.thumbnail,
+        description: item.description || 'No description available.',
+      };
+    } catch (e) {
+      console.error('Error fetching Google Books', e);
+      return null;
+    }
+  };
+
+  const handleFilterChange = (field, value) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
+  };
+
+  const toggleDescription = (id) => {
+    setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  return (
+    <div className="p-4 max-w-7xl mx-auto bg-gradient-to-br from-blue-50 to-pink-50 min-h-screen">
+      <h1 className="text-3xl font-bold mb-4 text-center text-purple-700">Bookerfly Kids Library - Book Catalog</h1>
+
+      <div className="bg-white p-4 rounded-xl shadow-md mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <input type="number" placeholder="Min Age" className="input" onChange={e => handleFilterChange('minAge', e.target.value)} />
+          <input type="number" placeholder="Max Age" className="input" onChange={e => handleFilterChange('maxAge', e.target.value)} />
+          <input type="text" placeholder="Author" className="input" onChange={e => handleFilterChange('author', e.target.value)} />
+          <input type="text" placeholder="Title" className="input" onChange={e => handleFilterChange('title', e.target.value)} />
         </div>
-        <button className="mt-4 px-4 py-2 bg-blue-500 text-white rounded" onClick={applyFilters}>Apply Filters</button>
+        <button className="mt-3 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-800" onClick={applyFilters}>
+          Apply Filters
+        </button>
       </div>
 
-      {hideReadMessage && <div className="text-sm text-red-500 mb-4">Hidden books already read previously by you.</div>}
+      {hiddenRead?.length > 0 && <p className="text-sm text-red-600 font-medium mb-4">Hidden books already read previously by you.</p>}
 
-      {books.length === 0 ? (
-        <div className="text-center text-gray-500 mt-4">
-          No books to display. Please try changing filters or check your login.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      {loading ? <p>Loading...</p> : (
+        <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {books.map(book => (
-            <div key={book.BookID} className="bg-white p-4 rounded-lg shadow">
-              <img src={book.Thumbnail} alt={book.Title} className="w-full h-48 object-cover rounded mb-4" />
-              <div className="font-bold text-lg mb-1">{book.Title}</div>
-              <div className="text-sm text-gray-600 mb-1">By: {book.Authors}</div>
-              <div className="text-sm text-gray-600 mb-1">Age Group: {book.MinAge} to {book.Max_Age}</div>
-              <div className="text-sm text-gray-700 mb-1">
-                {book.Description && book.Description.length > 200 ? (
-                  <>
-                    {book.Description.slice(0, 200)}... <span className="text-blue-600 cursor-pointer" onClick={() => alert(book.Description)}>more</span>
-                  </>
+            <div key={book.BookID} className="bg-white rounded-xl p-4 shadow-md flex flex-col">
+              <img src={book.Thumbnail} alt={book.Title} className="h-40 object-contain mb-2 mx-auto" />
+              <h2 className="text-lg font-bold text-purple-800">{book.Title}</h2>
+              <p className="text-sm text-gray-600 italic">{book.Authors}</p>
+              <p className="text-xs text-gray-800 mt-1">
+                {book.Description?.length > 120 ? (
+                  expandedDesc[book.BookID] ? book.Description : `${book.Description?.substring(0, 120)}... `
                 ) : book.Description}
-              </div>
-              <div className="mt-2">
-                <a href="#" className="text-green-600 underline block">Book for me</a>
-                <div className="text-sm mt-1">
-                  <a href={`https://www.amazon.in/s?k=${book.ISBN13}&tag=123432543556`} className="text-blue-600 underline mr-2">Buy on Amazon</a>
-                  {book.ISBN13 && askPriceMap[book.ISBN13] && (
-                    <span className="text-black">Buy from us at ₹{askPriceMap[book.ISBN13]}</span>
-                  )}
+                {book.Description?.length > 120 && (
+                  <span onClick={() => toggleDescription(book.BookID)} className="text-blue-500 cursor-pointer underline">more</span>
+                )}
+              </p>
+              <p className="text-sm text-gray-700 mt-1">Age Group: {book.MinAge} - {book.MaxAge}</p>
+              <a href="#" className="text-white bg-blue-500 px-3 py-1 mt-2 rounded hover:bg-blue-700 text-xs w-fit">Book for Me</a>
+              <div className="mt-2 text-xs text-gray-700">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {book.minPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</span>}
+                  <a href={`https://www.amazon.in/dp/${book.ISBN13}/?tag=123432543556`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-orange-600 hover:underline">
+                    Buy on Amazon <FaExternalLinkAlt />
+                  </a>
                 </div>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      <div className="mt-6 flex justify-between items-center">
+        <button onClick={() => setPage(p => Math.max(1, p - 1))} className="btn">Previous</button>
+        <span className="text-sm">Page {page}</span>
+        <button onClick={() => setPage(p => p + 1)} className="btn">Next</button>
+      </div>
     </div>
   );
-};
-
-export default Catalog;
+}
