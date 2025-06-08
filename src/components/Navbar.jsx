@@ -21,6 +21,7 @@ export default function Navbar() {
         <Link to="/my-books">My Books</Link>
         <Link to="/recommendations">Recommendations</Link>
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/add-book">Add a Book</Link>}
+        {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/issue-books">Issue Books</Link>}
         {user ? (
           <button onClick={handleLogout}>Logout</button>
         ) : (

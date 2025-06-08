@@ -51,7 +51,7 @@ function AppRoutes() {
         <Route path="/my-books" element={<MyBooks />} />
         <Route path="/recommendations" element={<Recommendations />} />
         <Route path="/admin/add-book" element={<AdminAddBook />} />
-        <Route path="/issue-books" element={<IssueBooks user={currentUser} />} />
+        <Route path="/admin/issue-books" element={<IssueBooks /} />
       </Routes>
     </>
   );
