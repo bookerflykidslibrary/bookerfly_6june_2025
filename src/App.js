@@ -9,6 +9,7 @@ import Catalog from './pages/Catalog';
 import MyBooks from './pages/MyBooks';
 import Recommendations from './pages/Recommendations';
 import AdminAddBook from './pages/AdminAddBook';
+import IssueBooks from './pages/IssueBooks';
 
 const supabase = createClient(
   process.env.REACT_APP_PUBLIC_SUPABASE_URL,
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="/my-books" element={<MyBooks />} />
         <Route path="/recommendations" element={<Recommendations />} />
         <Route path="/admin/add-book" element={<AdminAddBook />} />
+        <Route path="/issue-books" element={<IssueBooks user={currentUser} />} />
       </Routes>
     </>
   );
