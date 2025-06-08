@@ -16,7 +16,6 @@ export default function Navbar() {
 
   return (
     <nav className="flex justify-between items-center p-4 bg-blue-600 text-white">
-      <h1 className="text-xl font-bold">📚 Bookerfly Kids Library</h1>
       <div className="space-x-4">
         <Link to="/catalog">Catalog</Link>
         <Link to="/my-books">My Books</Link>
