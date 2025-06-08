@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
+import supabase from '../utils/supabaseClient';
 
 export default function IssueBooks({ user }) {
   const [customerID, setCustomerID] = useState('');
