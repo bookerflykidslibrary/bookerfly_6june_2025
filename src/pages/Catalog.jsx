@@ -57,14 +57,12 @@ export default function Catalog({ user }) {
 
   const loadBooks = async () => {
     setLoading(true);
-    let query = supabase.from('catalog').select('*').limit(200); // fetch in bulk
+    let query = supabase.from('catalog').select('*').limit(200);
 
     if (appliedFilters) {
       const { minAge, maxAge, author, title } = appliedFilters;
       if (minAge && maxAge) {
-        query = query
-          .lte('MinAge', maxAge)
-          .gte('MaxAge', minAge);
+        query = query.lte('MinAge', maxAge).gte('MaxAge', minAge);
       }
       if (author) query = query.ilike('Authors', `%${author}%`);
       if (title) query = query.ilike('Title', `%${title}%`);
@@ -77,21 +75,41 @@ export default function Catalog({ user }) {
       return;
     }
 
+    // Step 1: Get all relevant ISBNs
+    const isbnList = catalogBooks.map(book => book.ISBN13);
+    const { data: copyinfo, error: copyError } = await supabase
+      .from('copyinfo')
+      .select('ISBN13, CopyBooked, AskPrice')
+      .in('ISBN13', isbnList);
+
+    if (copyError) {
+      console.error('Error fetching copyinfo:', copyError);
+      setLoading(false);
+      return;
+    }
+
+    // Step 2: Build availability & price map
+    const availabilityMap = {};
+    const priceMap = {};
+
+    for (const copy of copyinfo) {
+      if (!availabilityMap[copy.ISBN13]) availabilityMap[copy.ISBN13] = false;
+      if (!copy.CopyBooked) availabilityMap[copy.ISBN13] = true;
+
+      if (copy.AskPrice !== null) {
+        if (!priceMap[copy.ISBN13] || copy.AskPrice < priceMap[copy.ISBN13]) {
+          priceMap[copy.ISBN13] = copy.AskPrice;
+        }
+      }
+    }
+
+    // Step 3: Filter and enrich books
     const filteredBooks = [];
     for (const book of catalogBooks) {
-      const { data: copies } = await supabase
-        .from('copyinfo')
-        .select('CopyBooked, AskPrice')
-        .eq('ISBN13', book.ISBN13);
-
-      const available = copies?.some(c => !c.CopyBooked);
-      if (!available) continue;
-
+      if (!availabilityMap[book.ISBN13]) continue;
       if (hiddenRead && hiddenRead.includes(book.ISBN13)) continue;
 
-      const minPrice = Math.min(...(copies?.map(c => c.AskPrice).filter(Boolean) ?? []));
-      book.minPrice = isFinite(minPrice) ? minPrice : null;
-      filteredBooks.push(book);
+      book.minPrice = priceMap[book.ISBN13] ?? null;
 
       if ((!book.Thumbnail || !book.Description)) {
         const enriched = await fetchGoogleBooks(book.ISBN13);
@@ -104,6 +122,8 @@ export default function Catalog({ user }) {
           book.Description = enriched.description;
         }
       }
+
+      filteredBooks.push(book);
     }
 
     const randomized = filteredBooks.sort(() => 0.5 - Math.random());
