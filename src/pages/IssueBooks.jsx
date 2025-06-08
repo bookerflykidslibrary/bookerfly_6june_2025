@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import supabase from '../utils/supabaseClient';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../utils/supabaseClient';
 
-export default function IssueBooks({ user }) {
+export default function IssueBooks() {
   const [customerID, setCustomerID] = useState('');
   const [bookIDs, setBookIDs] = useState(Array(10).fill(''));
   const [bookDetails, setBookDetails] = useState([]);
@@ -9,14 +9,69 @@ export default function IssueBooks({ user }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Admin check
-  if (!user || user.role !== 'admin') {
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
+
+  // Check admin from JWT claims
+  useEffect(() => {
+    async function checkAdmin() {
+      setCheckingAdmin(true);
+      const user = supabase.auth.getUser();
+      if (!user) {
+        setIsAdmin(false);
+        setCheckingAdmin(false);
+        return;
+      }
+      const session = supabase.auth.getSession();
+      const token = session?.data?.session?.access_token;
+      if (!token) {
+        setIsAdmin(false);
+        setCheckingAdmin(false);
+        return;
+      }
+
+      // Decode JWT token manually or use supabase helper
+      // Supabase client does not expose claims directly, so decode JWT payload:
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split('')
+          .map(function (c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          })
+          .join('')
+      );
+
+      try {
+        const payload = JSON.parse(jsonPayload);
+        const isAdminClaim = payload?.app_metadata?.is_admin;
+        setIsAdmin(isAdminClaim === 'true');
+      } catch (e) {
+        setIsAdmin(false);
+      }
+      setCheckingAdmin(false);
+    }
+    checkAdmin();
+  }, []);
+
+  if (checkingAdmin) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <p className="text-gray-700 text-lg">Checking access...</p>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-red-50 p-4">
         <p className="text-red-700 text-xl font-semibold">Access denied. Admins only.</p>
       </div>
     );
   }
+
+  // --- rest of your IssueBooks component below ---
 
   const handleBookIDChange = (index, value) => {
     const newBookIDs = [...bookIDs];
@@ -40,7 +95,6 @@ export default function IssueBooks({ user }) {
         return;
       }
 
-      // Build OR condition for BookID or ISBN13
       let orCondition = filteredBookIDs
         .map((id) => `ISBN13.eq.${id}`)
         .concat(filteredBookIDs.map((id) => `BookID.eq.${id}`))
@@ -71,7 +125,7 @@ export default function IssueBooks({ user }) {
     setError('');
     setLoading(true);
     try {
-      const today = new Date().toISOString().slice(0, 10); // yyyy-mm-dd
+      const today = new Date().toISOString().slice(0, 10);
 
       const inserts = bookDetails.map((book) => ({
         LibraryBranch: 'Main',
