@@ -45,6 +45,7 @@ export default function IssueBooks() {
 
       try {
         const payload = JSON.parse(jsonPayload);
+        console.log('Decoded JWT payload:', payload);
         const isAdminClaim = payload?.app_metadata?.is_admin;
         setIsAdmin(isAdminClaim === 'true');
       } catch (e) {
