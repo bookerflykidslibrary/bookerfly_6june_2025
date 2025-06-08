@@ -1,98 +1,42 @@
-import { useState } from 'react';
-import  supabase  from '../utils/supabaseClient';
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import supabase from '../utils/supabaseClient'
 
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [isEmailLogin, setIsEmailLogin] = useState(true);
-  const [error, setError] = useState(null);
+export default function Navbar() {
+  const [user, setUser] = useState(null)
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setError(null);
-
-    let result;
-    if (isEmailLogin) {
-      result = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-    } else {
-      result = await supabase.auth.signInWithPassword({
-        phone,
-        password,
-      });
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
     }
+    getUser()
+  }, [])
 
-    if (result.error) {
-      setError(result.error.message);
-    } else {
-      window.location.href = '/catalog'; // redirect after login
-    }
-  };
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/login'
+  }
 
   return (
-    <div className="max-w-md mx-auto p-4 mt-10 border rounded shadow">
-      <h1 className="text-xl font-bold mb-4 text-center">Login</h1>
-
-      <div className="mb-4">
-        <label>
-          <input
-            type="radio"
-            name="loginType"
-            checked={isEmailLogin}
-            onChange={() => setIsEmailLogin(true)}
-          />
-          Email
-        </label>
-        <label className="ml-4">
-          <input
-            type="radio"
-            name="loginType"
-            checked={!isEmailLogin}
-            onChange={() => setIsEmailLogin(false)}
-          />
-          Phone
-        </label>
-      </div>
-
-      <form onSubmit={handleLogin}>
-        {isEmailLogin ? (
-          <input
-            type="email"
-            placeholder="Email"
-            className="w-full mb-2 p-2 border rounded"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        ) : (
-          <input
-            type="tel"
-            placeholder="Phone (e.g. +911234567890)"
-            className="w-full mb-2 p-2 border rounded"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
+    <nav className="flex flex-col sm:flex-row justify-between items-center p-4 bg-blue-600 text-white space-y-2 sm:space-y-0">
+      <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-4">
+        <h1 className="text-xl font-bold">📚 Bookerfly Kids Library</h1>
+        {user && (
+          <span className="text-sm">You are logged in as <strong>{user.user_metadata?.name || user.email}</strong></span>
         )}
-
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full mb-4 p-2 border rounded"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-
-        {error && <p className="text-red-500 mb-2">{error}</p>}
-
-        <button
-          type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-        >
-          Login
-        </button>
-      </form>
-    </div>
-  );
+      </div>
+      <div className="space-x-4">
+        <Link to="/catalog">Catalog</Link>
+        <Link to="/my-books">My Books</Link>
+        <Link to="/recommendations">Recommendations</Link>
+        {user?.email === 'admin@example.com' && <Link to="/admin/add-book">Admin</Link>}
+        {user ? (
+          <button onClick={handleLogout} className="bg-red-500 px-2 py-1 rounded hover:bg-red-600">Logout</button>
+        ) : (
+          <Link to="/login">Login</Link>
+        )}
+      </div>
+    </nav>
+  )
 }
