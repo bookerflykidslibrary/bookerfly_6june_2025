@@ -61,8 +61,11 @@ export default function Catalog({ user }) {
 
     if (appliedFilters) {
       const { minAge, maxAge, author, title } = appliedFilters;
-      if (minAge) query = query.gte('MinAge', minAge);
-      if (maxAge) query = query.lte('MaxAge', maxAge);
+      if (minAge && maxAge) {
+        query = query
+          .lte('MinAge', maxAge)
+          .gte('MaxAge', minAge);
+      }
       if (author) query = query.ilike('Authors', `%${author}%`);
       if (title) query = query.ilike('Title', `%${title}%`);
     }
