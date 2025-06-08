@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import supabase from '../utils/supabaseClient';
+import { supabase } from '../utils/supabaseClient';
 
 export default function IssueBooks() {
   const [customerID, setCustomerID] = useState('');
@@ -12,45 +12,33 @@ export default function IssueBooks() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAdmin, setCheckingAdmin] = useState(true);
 
-  // Check admin from JWT claims
   useEffect(() => {
     async function checkAdmin() {
       setCheckingAdmin(true);
-      const user = supabase.auth.getUser();
-      if (!user) {
-        setIsAdmin(false);
-        setCheckingAdmin(false);
-        return;
-      }
-      const session = supabase.auth.getSession();
-      const token = session?.data?.session?.access_token;
-      if (!token) {
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
         setIsAdmin(false);
         setCheckingAdmin(false);
         return;
       }
 
-      // Decode JWT token manually or use supabase helper
-      // Supabase client does not expose claims directly, so decode JWT payload:
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(
-        atob(base64)
-          .split('')
-          .map(function (c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-          })
-          .join('')
-      );
+      const { data: admin, error: adminError } = await supabase
+        .from('admininfo')
+        .select('AdminLocation')
+        .eq('AdminID', user.id)
+        .single();
 
-      try {
-        const payload = JSON.parse(jsonPayload);
-        console.log('Decoded JWT payload:', payload);
-        const isAdminClaim = payload?.app_metadata?.is_admin;
-        setIsAdmin(isAdminClaim === 'true');
-      } catch (e) {
+      if (adminError || !admin) {
         setIsAdmin(false);
+      } else {
+        setIsAdmin(true);
       }
+
       setCheckingAdmin(false);
     }
     checkAdmin();
@@ -59,7 +47,7 @@ export default function IssueBooks() {
   if (checkingAdmin) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <p className="text-gray-700 text-lg">Checking access...</p>
+        <p className="text-gray-700 text-lg">Checking admin access...</p>
       </div>
     );
   }
@@ -72,7 +60,7 @@ export default function IssueBooks() {
     );
   }
 
-  // --- rest of your IssueBooks component below ---
+  // --- rest of your component here ---
 
   const handleBookIDChange = (index, value) => {
     const newBookIDs = [...bookIDs];
