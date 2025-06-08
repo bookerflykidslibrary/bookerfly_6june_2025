@@ -2,146 +2,141 @@ import React, { useState, useEffect } from 'react';
 import supabase from '../utils/supabaseClient';
 
 export default function IssueBooks() {
-  const [bookIds, setBookIds] = useState(Array(10).fill(''));
+  const [bookInputs, setBookInputs] = useState(Array(10).fill(''));
   const [customerId, setCustomerId] = useState('');
   const [books, setBooks] = useState([]);
-  const [adminLocation, setAdminLocation] = useState('');
-  const [step, setStep] = useState(1);
+  const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminLocation, setAdminLocation] = useState('');
 
   useEffect(() => {
-    const fetchAdminLocation = async () => {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData?.user) {
-        setMessage('❌ Could not get current user.');
-        return;
-      }
-      const userId = userData.user.id;
+    const checkAdmin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      const { data: admin, error: adminError } = await supabase
+      const { data: admin, error } = await supabase
         .from('admininfo')
         .select('AdminLocation')
-        .eq('AdminID', userId)
-        .maybeSingle();
+        .eq('AdminID', user.id)
+        .single();
 
-      if (adminError || !admin) {
-        setMessage('❌ You are not authorized to access this page.');
-        return;
+      if (admin) {
+        setIsAdmin(true);
+        setAdminLocation(admin.AdminLocation);
       }
-
-      setAdminLocation(admin.AdminLocation);
     };
-    fetchAdminLocation();
+    checkAdmin();
   }, []);
 
   const handleInputChange = (index, value) => {
-    const updated = [...bookIds];
+    const updated = [...bookInputs];
     updated[index] = value;
-    setBookIds(updated);
+    setBookInputs(updated);
   };
 
-  const handleFetchBooks = async () => {
-    const cleanedIds = bookIds.filter((id) => id.trim() !== '');
-    const bookDetails = [];
-
-    for (const id of cleanedIds) {
-      const { data: catalog, error } = await supabase
-        .from('catalog')
-        .select('ISBN13, Title, Authors, Thumbnail')
-        .or(`ISBN13.eq.${id},BookID.eq.${id}`)
-        .maybeSingle();
-
-      if (error || !catalog) continue;
-      bookDetails.push(catalog);
+  const handleReview = async () => {
+    const filtered = bookInputs.map(id => id.trim()).filter(id => id !== '');
+    if (!customerId || filtered.length === 0) {
+      setMessage('Please enter Customer ID and at least one Book ID/ISBN.');
+      return;
     }
 
-    setBooks(bookDetails);
-    setStep(2);
+    const { data, error } = await supabase
+      .from('catalog')
+      .select('Title, Authors, ISBN13, Thumbnail')
+      .in('ISBN13', filtered);
+
+    if (error) {
+      setMessage('Error fetching book details.');
+      return;
+    }
+
+    setBooks(data);
+    setConfirming(true);
+    setMessage('');
   };
 
-  const handleConfirmIssue = async () => {
-    const today = new Date().toISOString().split('T')[0];
-    const inserts = books.map((book) => ({
+  const handleConfirm = async () => {
+    const today = new Date().toISOString();
+    const records = books.map(book => ({
+      LibraryBranch: adminLocation,
       ISBN13: book.ISBN13,
       BookingDate: today,
       MemberID: customerId,
-      LibraryBranch: adminLocation,
+      ReturnDate: null,
+      Comment: '',
     }));
 
-    const { error } = await supabase.from('circulationhistory').insert(inserts);
+    const { error } = await supabase.from('circulationhistory').insert(records);
+
     if (error) {
-      setMessage('❌ Failed to issue books: ' + error.message);
+      setMessage('Error issuing books: ' + error.message);
     } else {
-      setMessage('✅ Books successfully issued!');
+      setMessage('✅ Books issued successfully!');
+      setConfirming(false);
       setBooks([]);
-      setBookIds(Array(10).fill(''));
+      setBookInputs(Array(10).fill(''));
       setCustomerId('');
-      setStep(1);
     }
   };
 
-  if (!adminLocation) return <p className="text-center p-4">Loading or unauthorized...</p>;
+  if (!isAdmin) {
+    return <div className="text-center p-4 text-red-600 font-bold">Access Denied: Admins Only</div>;
+  }
 
   return (
-    <div className="max-w-lg mx-auto p-4 bg-white rounded shadow mt-6">
-      <h2 className="text-2xl font-bold text-center text-indigo-700 mb-4">Issue Books</h2>
+    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8">
+      <h2 className="text-2xl font-bold text-center text-purple-700 mb-4">Issue Books</h2>
 
-      {step === 1 && (
-        <>
-          <input
-            type="text"
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
-            placeholder="Enter Customer ID"
-            className="w-full mb-3 p-2 border border-gray-300 rounded"
-          />
-          {bookIds.map((id, idx) => (
-            <input
-              key={idx}
-              type="text"
-              value={id}
-              onChange={(e) => handleInputChange(idx, e.target.value)}
-              placeholder={`Book ${idx + 1} ID / ISBN`}
-              className="w-full mb-2 p-2 border border-gray-300 rounded"
-            />
+      <input
+        type="text"
+        placeholder="Enter Customer ID"
+        value={customerId}
+        onChange={(e) => setCustomerId(e.target.value)}
+        className="w-full p-2 mb-4 border border-gray-300 rounded"
+      />
+
+      {bookInputs.map((value, index) => (
+        <input
+          key={index}
+          type="text"
+          placeholder={`Book ${index + 1} ID/ISBN`}
+          value={value}
+          onChange={(e) => handleInputChange(index, e.target.value)}
+          className="w-full p-2 mb-2 border border-gray-300 rounded"
+        />
+      ))}
+
+      <button
+        onClick={handleReview}
+        className="w-full mt-2 bg-purple-600 text-white py-2 rounded"
+      >
+        Review Books
+      </button>
+
+      {confirming && (
+        <div className="mt-4">
+          <h3 className="text-lg font-semibold text-gray-700">Confirm Issue:</h3>
+          {books.map((b, i) => (
+            <div key={i} className="flex items-center gap-2 py-2 border-b">
+              {b.Thumbnail && <img src={b.Thumbnail} alt="thumb" className="w-12 h-auto rounded" />}
+              <div>
+                <p className="text-sm font-bold">{b.Title}</p>
+                <p className="text-xs text-gray-600">{b.Authors}</p>
+              </div>
+            </div>
           ))}
           <button
-            onClick={handleFetchBooks}
-            className="w-full mt-3 bg-indigo-600 text-white py-2 rounded"
-          >
-            Fetch Book Details
-          </button>
-        </>
-      )}
-
-      {step === 2 && (
-        <>
-          <div className="space-y-4">
-            {books.map((book, idx) => (
-              <div key={idx} className="p-2 border rounded bg-gray-50">
-                <div className="flex items-center">
-                  <img src={book.Thumbnail} alt="thumbnail" className="w-16 h-20 object-cover rounded mr-4" />
-                  <div>
-                    <p className="font-bold">{book.Title}</p>
-                    <p className="text-sm text-gray-600">{book.Authors}</p>
-                    <p className="text-xs text-gray-500">ISBN: {book.ISBN13}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={handleConfirmIssue}
+            onClick={handleConfirm}
             className="w-full mt-4 bg-green-600 text-white py-2 rounded"
           >
-            Confirm & Issue Books
+            Confirm Issue
           </button>
-        </>
+        </div>
       )}
 
-      {message && (
-        <p className="text-center mt-4 text-red-600 font-semibold">{message}</p>
-      )}
+      {message && <p className="mt-4 text-center text-sm text-blue-700 font-semibold">{message}</p>}
     </div>
   );
 }
