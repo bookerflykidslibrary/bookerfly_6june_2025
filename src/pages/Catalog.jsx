@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { FaExternalLinkAlt } from 'react-icons/fa';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 
 export default function Catalog({ user }) {
   const [books, setBooks] = useState([]);
