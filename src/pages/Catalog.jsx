@@ -12,6 +12,7 @@ export default function Catalog({ user }) {
   const [hiddenRead, setHiddenRead] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
+  const [addedRequests, setAddedRequests] = useState({});
 
   useEffect(() => {
     if (user?.email) fetchReadBooks(user.email);
@@ -55,9 +56,54 @@ export default function Catalog({ user }) {
     setPage(1);
   };
 
+  const handleBookRequest = async (book) => {
+    if (!user?.email) {
+      alert('Please log in to request a book.');
+      return;
+    }
+
+    const { data: customer } = await supabase
+      .from('customerinfo')
+      .select('CustomerID')
+      .eq('EmailID', user.email)
+      .single();
+
+    if (!customer) {
+      alert('User not found in customerinfo.');
+      return;
+    }
+
+    const customerID = customer.CustomerID;
+
+    const { data: existingRequests } = await supabase
+      .from('circulationfuture')
+      .select('SerialNumberOfIssue')
+      .eq('ISBN13', book.ISBN13)
+      .eq('CustomerID', customerID)
+      .order('SerialNumberOfIssue', { ascending: false })
+      .limit(1);
+
+    const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
+
+    const { error } = await supabase.from('circulationfuture').insert({
+      ISBN13: book.ISBN13,
+      CopyNumber: null,
+      SerialNumberOfIssue: nextSerial,
+      CustomerID: customerID,
+    });
+
+    if (error) {
+      console.error('Error adding request:', error);
+      alert('Failed to add request. Try again later.');
+      return;
+    }
+
+    setAddedRequests(prev => ({ ...prev, [book.ISBN13]: true }));
+  };
+
   const loadBooks = async () => {
     setLoading(true);
-    let query = supabase.from('catalog').select('BookID,ISBN13,Title,Authors,Thumbnail,Description,MinAge,MaxAge').limit(200);
+    let query = supabase.from('catalog').select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description').limit(200);
 
     if (appliedFilters) {
       const { minAge, maxAge, author, title } = appliedFilters;
@@ -75,7 +121,6 @@ export default function Catalog({ user }) {
       return;
     }
 
-    // Step 1: Get all relevant ISBNs
     const isbnList = catalogBooks.map(book => book.ISBN13);
     const { data: copyinfo, error: copyError } = await supabase
       .from('copyinfo')
@@ -88,7 +133,6 @@ export default function Catalog({ user }) {
       return;
     }
 
-    // Step 2: Build availability & price map
     const availabilityMap = {};
     const priceMap = {};
 
@@ -103,25 +147,12 @@ export default function Catalog({ user }) {
       }
     }
 
-    // Step 3: Filter and enrich books
     const filteredBooks = [];
     for (const book of catalogBooks) {
       if (!availabilityMap[book.ISBN13]) continue;
       if (hiddenRead && hiddenRead.includes(book.ISBN13)) continue;
 
       book.minPrice = priceMap[book.ISBN13] ?? null;
-
-      if ((!book.Thumbnail || !book.Description)) {
-        const enriched = await fetchGoogleBooks(book.ISBN13);
-        if (enriched) {
-          await supabase.from('catalog').update({
-            Thumbnail: enriched.thumbnail,
-            Description: enriched.description,
-          }).eq('ISBN13', book.ISBN13);
-          book.Thumbnail = enriched.thumbnail;
-          book.Description = enriched.description;
-        }
-      }
 
       filteredBooks.push(book);
     }
@@ -190,7 +221,12 @@ export default function Catalog({ user }) {
                 )}
               </p>
               <p className="text-sm text-gray-700 mt-1">Age Group: {book.MinAge} - {book.MaxAge}</p>
-              <a href="#" className="text-white bg-blue-500 px-3 py-1 mt-2 rounded hover:bg-blue-700 text-xs w-fit">Book for Me</a>
+              <button
+                onClick={() => handleBookRequest(book)}
+                className="text-white bg-blue-500 px-3 py-1 mt-2 rounded hover:bg-blue-700 text-xs w-fit"
+              >
+                {addedRequests[book.ISBN13] ? 'Added to your future requests :-)' : 'Book for Me'}
+              </button>
               <div className="mt-2 text-xs text-gray-700">
                 <div className="flex flex-col sm:flex-row gap-2">
                   {book.minPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</span>}
