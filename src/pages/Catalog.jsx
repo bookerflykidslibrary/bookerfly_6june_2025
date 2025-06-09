@@ -73,13 +73,21 @@ export default function Catalog() {
 
     const customerID = customer.CustomerID;
 
-    const { data: existingRequests } = await supabase
-      .from('circulationfuture')
-      .select('SerialNumberOfIssue')
-      .eq('ISBN13', book.ISBN13)
-      .eq('CustomerID', customerID)
-      .order('SerialNumberOfIssue', { ascending: false })
-      .limit(1);
+const { data: existingRequests, error: serialFetchError } = await supabase
+  .from('circulationfuture')
+  .select('SerialNumberOfIssue')
+  .eq('ISBN13', book.ISBN13)
+  .eq('CustomerID', customerID)
+  .order('SerialNumberOfIssue', { ascending: false })
+  .limit(1);
+
+if (serialFetchError) {
+  console.error('Error fetching existing requests:', serialFetchError);
+  alert('Could not check existing requests. Please try again.');
+  return;
+}
+
+const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
 
     const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
 
