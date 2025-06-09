@@ -4,23 +4,31 @@ import { FaExternalLinkAlt } from 'react-icons/fa';
 
 const PAGE_SIZE = 50;
 
-export default function Catalog({ user }) {
+export default function Catalog() {
+  const [user, setUser] = useState(null);
   const [books, setBooks] = useState([]);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ minAge: '', maxAge: '', author: '', title: '' });
   const [appliedFilters, setAppliedFilters] = useState(null);
-  const [hiddenRead, setHiddenRead] = useState(false);
+  const [hiddenRead, setHiddenRead] = useState([]);
   const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
   const [addedRequests, setAddedRequests] = useState({});
 
   useEffect(() => {
-    if (user?.email) fetchReadBooks(user.email);
-  }, [user]);
+    const getUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (data?.user) {
+        setUser(data.user);
+        fetchReadBooks(data.user.email);
+      }
+    };
+    getUser();
+  }, []);
 
   useEffect(() => {
-    loadBooks();
-  }, [page, appliedFilters]);
+    if (user) loadBooks();
+  }, [page, appliedFilters, user]);
 
   const fetchReadBooks = async (email) => {
     const { data: customer, error } = await supabase
@@ -29,25 +37,15 @@ export default function Catalog({ user }) {
       .eq('EmailID', email)
       .single();
 
-    if (error) {
-      console.error('Error fetching customer info:', error);
-      return;
-    }
+    if (error || !customer) return;
 
-    if (customer) {
-      const { data: readHistory, error: readError } = await supabase
-        .from('circulationhistory')
-        .select('ISBN13')
-        .eq('MemberID', customer.CustomerID);
+    const { data: readHistory } = await supabase
+      .from('circulationhistory')
+      .select('ISBN13')
+      .eq('MemberID', customer.CustomerID);
 
-      if (readError) {
-        console.error('Error fetching read history:', readError);
-        return;
-      }
-
-      if (readHistory?.length) {
-        setHiddenRead(readHistory.map(b => b.ISBN13));
-      }
+    if (readHistory?.length) {
+      setHiddenRead(readHistory.map(b => b.ISBN13));
     }
   };
 
@@ -57,7 +55,6 @@ export default function Catalog({ user }) {
   };
 
   const handleBookRequest = async (book) => {
-console.log('User object in handleBookRequest:', user);
     if (!user?.email) {
       alert('Please log in to request a book.');
       return;
@@ -104,13 +101,14 @@ console.log('User object in handleBookRequest:', user);
 
   const loadBooks = async () => {
     setLoading(true);
-    let query = supabase.from('catalog').select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description').limit(200);
+    let query = supabase
+      .from('catalog')
+      .select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description')
+      .limit(200);
 
     if (appliedFilters) {
       const { minAge, maxAge, author, title } = appliedFilters;
-      if (minAge && maxAge) {
-        query = query.lte('MinAge', maxAge).gte('MaxAge', minAge);
-      }
+      if (minAge && maxAge) query = query.lte('MinAge', maxAge).gte('MaxAge', minAge);
       if (author) query = query.ilike('Authors', `%${author}%`);
       if (title) query = query.ilike('Title', `%${title}%`);
     }
@@ -154,7 +152,6 @@ console.log('User object in handleBookRequest:', user);
       if (hiddenRead && hiddenRead.includes(book.ISBN13)) continue;
 
       book.minPrice = priceMap[book.ISBN13] ?? null;
-
       filteredBooks.push(book);
     }
 
@@ -164,22 +161,6 @@ console.log('User object in handleBookRequest:', user);
     setLoading(false);
   };
 
-  const fetchGoogleBooks = async (isbn) => {
-    try {
-      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-      const json = await res.json();
-      const item = json.items?.[0]?.volumeInfo;
-      if (!item) return null;
-      return {
-        thumbnail: item.imageLinks?.thumbnail,
-        description: item.description || 'No description available.',
-      };
-    } catch (e) {
-      console.error('Error fetching Google Books', e);
-      return null;
-    }
-  };
-
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({ ...prev, [field]: value }));
   };
@@ -187,6 +168,8 @@ console.log('User object in handleBookRequest:', user);
   const toggleDescription = (id) => {
     setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
   };
+
+  if (!user) return <p className="p-4 text-center text-gray-600">Loading user info...</p>;
 
   return (
     <div className="p-4 max-w-7xl mx-auto bg-gradient-to-br from-blue-50 to-pink-50 min-h-screen">
