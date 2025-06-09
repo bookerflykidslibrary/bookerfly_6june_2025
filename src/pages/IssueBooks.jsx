@@ -1,94 +1,93 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import supabase from '../utils/supabaseClient';
 
 export default function IssueBooks() {
-  const [bookInputs, setBookInputs] = useState(
-    Array(10).fill({ isbn: '', copyLocationID: '' })
-  );
+  const [books, setBooks] = useState(Array(10).fill({ isbn: '', copyId: '', data: null }));
   const [customerId, setCustomerId] = useState('');
-  const [bookDetails, setBookDetails] = useState([]);
   const [confirmed, setConfirmed] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminLocation, setAdminLocation] = useState('');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    const checkAdmin = async () => {
+    const fetchAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
       const { data: admin } = await supabase
         .from('admininfo')
         .select('AdminLocation')
         .eq('AdminID', user.id)
         .single();
-      setIsAdmin(!!admin);
+      if (admin) setAdminLocation(admin.AdminLocation);
     };
-    checkAdmin();
+    fetchAdmin();
   }, []);
 
-  const handleInputChange = (index, field, value) => {
-    const updated = [...bookInputs];
-    updated[index][field] = value;
-    setBookInputs(updated);
+  const handleInputChange = (index, key, value) => {
+    const updated = [...books];
+    updated[index] = { ...updated[index], [key]: value };
+    setBooks(updated);
   };
 
-  const fetchBookDetails = async () => {
-    setMessage('');
-    const details = [];
+  const handleSearch = async () => {
+    const updated = await Promise.all(
+      books.map(async (book) => {
+        if (book.copyId) {
+          const { data: copyInfo } = await supabase
+            .from('copyinfo')
+            .select('ISBN13')
+            .eq('CopyLocationID', book.copyId)
+            .single();
 
-    for (const input of bookInputs) {
-      let data = null;
-      if (input.copyLocationID) {
-        const { data: copy, error: copyErr } = await supabase
-          .from('copyinfo')
-          .select('ISBN13')
-          .eq('CopyLocationID', input.copyLocationID)
-          .single();
-        if (copy?.ISBN13) {
-          const { data: catalog } = await supabase
+          if (copyInfo) {
+            const { data: bookInfo } = await supabase
+              .from('catalog')
+              .select('Title, Authors, Thumbnail')
+              .eq('ISBN13', copyInfo.ISBN13)
+              .single();
+
+            return { ...book, isbn: copyInfo.ISBN13, data: bookInfo };
+          }
+        } else if (book.isbn) {
+          const { data: bookInfo } = await supabase
             .from('catalog')
             .select('Title, Authors, Thumbnail')
-            .eq('ISBN13', copy.ISBN13)
+            .eq('ISBN13', book.isbn)
             .single();
-          if (catalog) details.push({ ...catalog, CopyLocationID: input.copyLocationID, ISBN13: copy.ISBN13 });
-        }
-      } else if (input.isbn) {
-        const { data: catalog } = await supabase
-          .from('catalog')
-          .select('Title, Authors, Thumbnail')
-          .eq('ISBN13', input.isbn)
-          .single();
-        if (catalog) details.push({ ...catalog, ISBN13: input.isbn });
-      }
-    }
 
-    if (details.length === 0) return setMessage('No books found. Please check input.');
-    setBookDetails(details);
+          return { ...book, data: bookInfo };
+        }
+        return book;
+      })
+    );
+    setBooks(updated);
   };
 
-  const issueBooks = async () => {
+  const handleConfirm = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     const today = new Date().toISOString().split('T')[0];
 
-    const updates = bookDetails.map(book => ({
-      ISBN13: book.ISBN13,
-      MemberID: customerId,
+    const inserts = books.filter(b => b.data).map(b => ({
+      ISBN13: b.isbn,
       BookingDate: today,
-      LibraryBranch: 'Default',
-      Comment: 'Issued from IssueBooks page'
+      MemberID: customerId,
+      LibraryBranch: adminLocation,
+      ReturnDate: null,
+      Comment: null,
     }));
 
-    const { error } = await supabase.from('circulationhistory').insert(updates);
-    if (error) return setMessage('❌ Error issuing books: ' + error.message);
+    const { error } = await supabase.from('circulationhistory').insert(inserts);
 
-    setConfirmed(true);
-    setMessage('✅ Books issued successfully!');
+    if (error) {
+      setMessage('❌ Error issuing books: ' + error.message);
+    } else {
+      setConfirmed(true);
+      setMessage('✅ Books issued successfully!');
+    }
   };
 
-  if (!isAdmin) return <div className="text-center mt-10 text-red-600">Access denied. Admins only.</div>;
-
   return (
-    <div className="max-w-2xl mx-auto p-4">
-      <h2 className="text-2xl font-bold text-center text-blue-700 mb-6">Issue Books</h2>
+    <div className="max-w-3xl mx-auto p-4 bg-white shadow-md rounded mt-4">
+      <h1 className="text-3xl font-bold text-center text-indigo-700 mb-6">Issue Books</h1>
+
       <input
         type="text"
         value={customerId}
@@ -96,57 +95,58 @@ export default function IssueBooks() {
         placeholder="Enter Customer ID"
         className="w-full p-2 border border-gray-300 rounded mb-4"
       />
-      {bookInputs.map((input, index) => (
-        <div key={index} className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+
+      {books.map((book, idx) => (
+        <div key={idx} className="mb-4 p-3 border rounded bg-gray-50">
+          <h3 className="font-semibold text-gray-700 mb-1">Book {idx + 1}</h3>
           <input
             type="text"
-            value={input.isbn}
-            onChange={(e) => handleInputChange(index, 'isbn', e.target.value)}
-            placeholder={`Book ${index + 1} ISBN13`}
-            className="p-2 border border-gray-300 rounded"
+            value={book.copyId}
+            onChange={(e) => handleInputChange(idx, 'copyId', e.target.value)}
+            placeholder="Copy Location ID (optional)"
+            className="w-full p-2 border border-gray-300 rounded mb-2"
           />
           <input
             type="text"
-            value={input.copyLocationID}
-            onChange={(e) => handleInputChange(index, 'copyLocationID', e.target.value)}
-            placeholder={`Book ${index + 1} CopyLocationID`}
-            className="p-2 border border-gray-300 rounded"
+            value={book.isbn}
+            onChange={(e) => handleInputChange(idx, 'isbn', e.target.value)}
+            placeholder="ISBN13 (optional)"
+            className="w-full p-2 border border-gray-300 rounded"
           />
         </div>
       ))}
+
       <button
-        onClick={fetchBookDetails}
-        className="w-full bg-blue-600 text-white py-2 rounded mt-4"
+        onClick={handleSearch}
+        className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
       >
         Issue Books
       </button>
 
-      {bookDetails.length > 0 && !confirmed && (
-        <div className="mt-6">
-          <h3 className="text-xl font-semibold mb-4">Confirm Book Details</h3>
-          <div className="space-y-4">
-            {bookDetails.map((book, i) => (
-              <div key={i} className="flex items-start space-x-4">
-                {book.Thumbnail && (
-                  <img src={book.Thumbnail} alt="thumb" className="w-16 h-24 object-cover rounded" />
-                )}
+      {books.some(b => b.data) && !confirmed && (
+        <div className="mt-6 space-y-4">
+          <h2 className="text-xl font-bold text-green-600">Confirm the following books:</h2>
+          {books.map((book, idx) => (
+            book.data ? (
+              <div key={idx} className="flex items-center border p-2 rounded">
+                <img src={book.data.Thumbnail} alt="thumb" className="w-16 h-20 object-cover rounded mr-4" />
                 <div>
-                  <p className="font-bold">{book.Title}</p>
-                  <p className="text-sm">{book.Authors}</p>
-                  <p className="text-sm text-gray-500">{book.ISBN13}</p>
+                  <p className="font-semibold">{book.data.Title}</p>
+                  <p className="text-sm text-gray-600">{book.data.Authors}</p>
                 </div>
               </div>
-            ))}
-            <button
-              onClick={issueBooks}
-              className="w-full bg-green-600 text-white py-2 rounded mt-4"
-            >
-              Confirm & Issue
-            </button>
-          </div>
+            ) : null
+          ))}
+          <button
+            onClick={handleConfirm}
+            className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
+          >
+            Confirm and Issue
+          </button>
         </div>
       )}
-      {message && <p className="mt-6 text-center text-lg text-green-700">{message}</p>}
+
+      {message && <p className="mt-4 text-center text-lg text-purple-600 font-semibold">{message}</p>}
     </div>
   );
 }
