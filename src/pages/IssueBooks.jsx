@@ -15,7 +15,7 @@ export default function IssueBooks() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: admin, error } = await supabase
+      const { data: admin } = await supabase
         .from('admininfo')
         .select('AdminLocation')
         .eq('AdminID', user.id)
@@ -35,124 +35,99 @@ export default function IssueBooks() {
     setBookInputs(updated);
   };
 
-const handleReview = async () => {
-  const filtered = bookInputs.filter(entry => entry.value.trim() !== '');
-  if (!customerId || filtered.length === 0) {
-    setMessage('Please enter Customer ID and at least one Book ID/ISBN.');
-    return;
-  }
+  const handleReview = async () => {
+    const filtered = bookInputs.filter(entry => entry.value.trim() !== '');
+    if (!customerId || filtered.length === 0) {
+      setMessage('Please enter Customer ID and at least one Book ID/ISBN.');
+      return;
+    }
 
-  let allBooks = [];
+    let allBooks = [];
 
-  for (let entry of filtered) {
-    let copy = null;
+    for (let entry of filtered) {
+      let copy = null;
 
-    if (entry.type === 'CopyLocationID') {
-      const { data: copyData } = await supabase
-        .from('copyinfo')
-        .select('CopyID, ISBN13')
-        .eq('CopyLocationID', entry.value)
-        .eq('CopyBooked', false)
+      if (entry.type === 'CopyLocationID') {
+        const { data: copyData } = await supabase
+          .from('copyinfo')
+          .select('CopyID, ISBN13')
+          .eq('CopyLocationID', entry.value)
+          .eq('CopyBooked', false)
+          .single();
+        if (copyData) copy = copyData;
+      } else if (entry.type === 'ISBN13') {
+        const { data: copyData } = await supabase
+          .from('copyinfo')
+          .select('CopyID, ISBN13')
+          .eq('ISBN13', entry.value)
+          .eq('CopyLocation', adminLocation)
+          .eq('CopyBooked', false)
+          .limit(1)
+          .maybeSingle();
+        if (copyData) copy = copyData;
+      }
+
+      if (!copy) {
+        allBooks.push({ error: `❌ No available copy found for ${entry.value}` });
+        continue;
+      }
+
+      const { data: book } = await supabase
+        .from('catalog')
+        .select('Title, Authors, ISBN13, Thumbnail')
+        .eq('ISBN13', copy.ISBN13)
         .single();
-      if (copyData) copy = copyData;
-    } else if (entry.type === 'ISBN13') {
-      const { data: copyData } = await supabase
-        .from('copyinfo')
-        .select('CopyID, ISBN13')
-        .eq('ISBN13', entry.value)
-        .eq('CopyLocation', adminLocation)
-        .eq('CopyBooked', false)
-        .limit(1)
-        .maybeSingle();
-      if (copyData) copy = copyData;
+
+      if (book) {
+        allBooks.push({ ...book, CopyID: copy.CopyID });
+      }
     }
 
-    if (!copy) {
-      allBooks.push({ error: `❌ No available copy found for ${entry.value}` });
-      continue;
-    }
-
-    const { data: book } = await supabase
-      .from('catalog')
-      .select('Title, Authors, ISBN13, Thumbnail')
-      .eq('ISBN13', copy.ISBN13)
-      .single();
-
-    if (book) {
-      allBooks.push({ ...book, CopyID: copy.CopyID });
-    }
-  }
-
-  setBooks(allBooks);
-  setConfirming(true);
-  setMessage('');
-};
-
-const handleConfirm = async () => {
-  const today = new Date().toISOString();
-
-  const records = books
-    .filter(b => b.CopyID)
-    .map(book => ({
-      LibraryBranch: adminLocation,
-      ISBN13: book.ISBN13,
-      BookingDate: today,
-      MemberID: customerId,
-      ReturnDate: null,
-      Comment: '',
-      CopyID: book.CopyID,
-    }));
-
-  const { error: insertError } = await supabase
-    .from('circulationhistory')
-    .insert(records);
-
-  if (insertError) {
-    setMessage('Error issuing books: ' + insertError.message);
-    return;
-  }
-
-  // Mark copies as booked
-  await Promise.all(
-    books.map(b =>
-      b.CopyID
-        ? supabase
-            .from('copyinfo')
-            .update({ CopyBooked: true })
-            .eq('CopyID', b.CopyID)
-        : null
-    )
-  );
-
-  setMessage('✅ Books issued successfully!');
-  setConfirming(false);
-  setBooks([]);
-  setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
-  setCustomerId('');
-};
+    setBooks(allBooks);
+    setConfirming(true);
+    setMessage('');
+  };
 
   const handleConfirm = async () => {
     const today = new Date().toISOString();
-    const records = books.map(book => ({
-      LibraryBranch: adminLocation,
-      ISBN13: book.ISBN13,
-      BookingDate: today,
-      MemberID: customerId,
-      ReturnDate: null,
-      Comment: '',
-    }));
 
-    const { error } = await supabase.from('circulationhistory').insert(records);
+    const records = books
+      .filter(b => b.CopyID)
+      .map(book => ({
+        LibraryBranch: adminLocation,
+        ISBN13: book.ISBN13,
+        BookingDate: today,
+        MemberID: customerId,
+        ReturnDate: null,
+        Comment: '',
+        CopyID: book.CopyID,
+      }));
 
-    if (error) {
-      setMessage('Error issuing books: ' + error.message);
-    } else {
-      setMessage('✅ Books issued successfully!');
-      setConfirming(false);
-      setBooks([]);
-      setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
-      setCustomerId('');
+    const { error: insertError } = await supabase
+      .from('circulationhistory')
+      .insert(records);
+
+    if (insertError) {
+      setMessage('Error issuing books: ' + insertError.message);
+      return;
     }
+
+    await Promise.all(
+      books.map(b =>
+        b.CopyID
+          ? supabase
+              .from('copyinfo')
+              .update({ CopyBooked: true })
+              .eq('CopyID', b.CopyID)
+          : null
+      )
+    );
+
+    setMessage('✅ Books issued successfully!');
+    setConfirming(false);
+    setBooks([]);
+    setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
+    setCustomerId('');
   };
 
   if (!isAdmin) {
@@ -203,11 +178,17 @@ const handleConfirm = async () => {
           <h3 className="text-lg font-semibold text-gray-700">Confirm Issue:</h3>
           {books.map((b, i) => (
             <div key={i} className="flex items-center gap-2 py-2 border-b">
-              {b.Thumbnail && <img src={b.Thumbnail} alt="thumb" className="w-12 h-auto rounded" />}
-              <div>
-                <p className="text-sm font-bold">{b.Title}</p>
-                <p className="text-xs text-gray-600">{b.Authors}</p>
-              </div>
+              {b.error ? (
+                <p className="text-red-600 text-sm">{b.error}</p>
+              ) : (
+                <>
+                  {b.Thumbnail && <img src={b.Thumbnail} alt="thumb" className="w-12 h-auto rounded" />}
+                  <div>
+                    <p className="text-sm font-bold">{b.Title}</p>
+                    <p className="text-xs text-gray-600">{b.Authors}</p>
+                  </div>
+                </>
+              )}
             </div>
           ))}
           <button
@@ -223,4 +204,3 @@ const handleConfirm = async () => {
     </div>
   );
 }
-
