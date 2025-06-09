@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import supabase from '../utils/supabaseClient';
 
 export default function IssueBooks() {
-  const [bookInputs, setBookInputs] = useState(Array(10).fill(''));
+  const [bookInputs, setBookInputs] = useState(Array(10).fill({ value: '', type: 'ISBN13' }));
   const [customerId, setCustomerId] = useState('');
   const [books, setBooks] = useState([]);
   const [confirming, setConfirming] = useState(false);
@@ -29,30 +29,49 @@ export default function IssueBooks() {
     checkAdmin();
   }, []);
 
-  const handleInputChange = (index, value) => {
+  const handleInputChange = (index, field, value) => {
     const updated = [...bookInputs];
-    updated[index] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setBookInputs(updated);
   };
 
   const handleReview = async () => {
-    const filtered = bookInputs.map(id => id.trim()).filter(id => id !== '');
+    const filtered = bookInputs.filter(entry => entry.value.trim() !== '');
     if (!customerId || filtered.length === 0) {
       setMessage('Please enter Customer ID and at least one Book ID/ISBN.');
       return;
     }
 
-    const { data, error } = await supabase
-      .from('catalog')
-      .select('Title, Authors, ISBN13, Thumbnail')
-      .in('ISBN13', filtered);
+    let allBooks = [];
 
-    if (error) {
-      setMessage('Error fetching book details.');
-      return;
+    for (let entry of filtered) {
+      if (entry.type === 'ISBN13') {
+        const { data, error } = await supabase
+          .from('catalog')
+          .select('Title, Authors, ISBN13, Thumbnail')
+          .eq('ISBN13', entry.value)
+          .single();
+
+        if (data) allBooks.push(data);
+      } else if (entry.type === 'CopyLocationID') {
+        const { data: copy, error: copyErr } = await supabase
+          .from('copyinfo')
+          .select('ISBN13')
+          .eq('CopyLocationID', entry.value)
+          .single();
+
+        if (copy?.ISBN13) {
+          const { data: book } = await supabase
+            .from('catalog')
+            .select('Title, Authors, ISBN13, Thumbnail')
+            .eq('ISBN13', copy.ISBN13)
+            .single();
+          if (book) allBooks.push(book);
+        }
+      }
     }
 
-    setBooks(data);
+    setBooks(allBooks);
     setConfirming(true);
     setMessage('');
   };
@@ -76,7 +95,7 @@ export default function IssueBooks() {
       setMessage('✅ Books issued successfully!');
       setConfirming(false);
       setBooks([]);
-      setBookInputs(Array(10).fill(''));
+      setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
       setCustomerId('');
     }
   };
@@ -97,15 +116,24 @@ export default function IssueBooks() {
         className="w-full p-2 mb-4 border border-gray-300 rounded"
       />
 
-      {bookInputs.map((value, index) => (
-        <input
-          key={index}
-          type="text"
-          placeholder={`Book ${index + 1} ID/ISBN`}
-          value={value}
-          onChange={(e) => handleInputChange(index, e.target.value)}
-          className="w-full p-2 mb-2 border border-gray-300 rounded"
-        />
+      {bookInputs.map((entry, index) => (
+        <div key={index} className="flex gap-2 mb-2">
+          <select
+            value={entry.type}
+            onChange={(e) => handleInputChange(index, 'type', e.target.value)}
+            className="p-2 border rounded w-1/3"
+          >
+            <option value="ISBN13">ISBN13</option>
+            <option value="CopyLocationID">CopyLocationID</option>
+          </select>
+          <input
+            type="text"
+            placeholder={`Book ${index + 1}`}
+            value={entry.value}
+            onChange={(e) => handleInputChange(index, 'value', e.target.value)}
+            className="flex-1 p-2 border border-gray-300 rounded"
+          />
+        </div>
       ))}
 
       <button
