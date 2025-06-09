@@ -57,7 +57,7 @@ export default function Catalog({ user }) {
 
   const loadBooks = async () => {
     setLoading(true);
-    let query = supabase.from('catalog').select('*').limit(200);
+    let query = supabase.from('catalog').select('BookID,ISBN13,Title,Authors,Thumbnail,Description,MinAge,MaxAge').limit(200);
 
     if (appliedFilters) {
       const { minAge, maxAge, author, title } = appliedFilters;

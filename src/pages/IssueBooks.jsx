@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
 export default function IssueBooks() {
-  const [bookInputs, setBookInputs] = useState(Array(10).fill({ isbn: '', copyLocationID: '' }));
-  const [customerID, setCustomerID] = useState('');
+  const [bookInputs, setBookInputs] = useState(
+    Array(10).fill({ isbn: '', copyLocationID: '' })
+  );
+  const [customerId, setCustomerId] = useState('');
   const [bookDetails, setBookDetails] = useState([]);
   const [confirmed, setConfirmed] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -13,144 +15,138 @@ export default function IssueBooks() {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
       const { data: admin } = await supabase
         .from('admininfo')
         .select('AdminLocation')
         .eq('AdminID', user.id)
         .single();
-
-      if (admin) setIsAdmin(true);
+      setIsAdmin(!!admin);
     };
-
     checkAdmin();
   }, []);
 
   const handleInputChange = (index, field, value) => {
-    const updatedInputs = [...bookInputs];
-    updatedInputs[index][field] = value;
-    setBookInputs(updatedInputs);
+    const updated = [...bookInputs];
+    updated[index][field] = value;
+    setBookInputs(updated);
   };
 
   const fetchBookDetails = async () => {
     setMessage('');
     const details = [];
 
-    for (const { isbn, copyLocationID } of bookInputs) {
-      if (!isbn && !copyLocationID) continue;
-
-      let book = null;
-      if (copyLocationID) {
-        const { data: copyInfo } = await supabase
+    for (const input of bookInputs) {
+      let data = null;
+      if (input.copyLocationID) {
+        const { data: copy, error: copyErr } = await supabase
           .from('copyinfo')
           .select('ISBN13')
-          .eq('CopyLocationID', copyLocationID)
+          .eq('CopyLocationID', input.copyLocationID)
           .single();
-
-        if (copyInfo?.ISBN13) {
-          const { data } = await supabase
+        if (copy?.ISBN13) {
+          const { data: catalog } = await supabase
             .from('catalog')
             .select('Title, Authors, Thumbnail')
-            .eq('ISBN13', copyInfo.ISBN13)
+            .eq('ISBN13', copy.ISBN13)
             .single();
-          if (data) book = { ...data, ISBN13: copyInfo.ISBN13 };
+          if (catalog) details.push({ ...catalog, CopyLocationID: input.copyLocationID, ISBN13: copy.ISBN13 });
         }
-      } else if (isbn) {
-        const { data } = await supabase
+      } else if (input.isbn) {
+        const { data: catalog } = await supabase
           .from('catalog')
           .select('Title, Authors, Thumbnail')
-          .eq('ISBN13', isbn)
+          .eq('ISBN13', input.isbn)
           .single();
-        if (data) book = { ...data, ISBN13: isbn };
+        if (catalog) details.push({ ...catalog, ISBN13: input.isbn });
       }
-
-      if (book) details.push(book);
     }
 
+    if (details.length === 0) return setMessage('No books found. Please check input.');
     setBookDetails(details);
   };
 
-  const confirmIssue = async () => {
+  const issueBooks = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
     const today = new Date().toISOString().split('T')[0];
 
-    for (const book of bookDetails) {
-      await supabase.from('circulationhistory').insert({
-        LibraryBranch: 'Main',
-        ISBN13: book.ISBN13,
-        BookingDate: today,
-        MemberID: customerID,
-        Comment: 'Issued via Admin UI'
-      });
-    }
+    const updates = bookDetails.map(book => ({
+      ISBN13: book.ISBN13,
+      MemberID: customerId,
+      BookingDate: today,
+      LibraryBranch: 'Default',
+      Comment: 'Issued from IssueBooks page'
+    }));
 
-    setMessage('✅ Books successfully issued!');
+    const { error } = await supabase.from('circulationhistory').insert(updates);
+    if (error) return setMessage('❌ Error issuing books: ' + error.message);
+
     setConfirmed(true);
+    setMessage('✅ Books issued successfully!');
   };
 
-  if (!isAdmin) return <div className="p-4 text-red-500">Access denied. Admins only.</div>;
+  if (!isAdmin) return <div className="text-center mt-10 text-red-600">Access denied. Admins only.</div>;
 
   return (
-    <div className="max-w-xl mx-auto p-4 bg-white rounded shadow mt-6">
-      <h2 className="text-2xl font-bold text-blue-700 text-center mb-4">Issue Books</h2>
-
+    <div className="max-w-2xl mx-auto p-4">
+      <h2 className="text-2xl font-bold text-center text-blue-700 mb-6">Issue Books</h2>
       <input
         type="text"
-        value={customerID}
-        onChange={(e) => setCustomerID(e.target.value)}
+        value={customerId}
+        onChange={(e) => setCustomerId(e.target.value)}
         placeholder="Enter Customer ID"
         className="w-full p-2 border border-gray-300 rounded mb-4"
       />
-
       {bookInputs.map((input, index) => (
-        <div key={index} className="mb-2">
-          <label className="block font-semibold mb-1">Book {index + 1}</label>
+        <div key={index} className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
           <input
             type="text"
-            placeholder="Enter ISBN13"
             value={input.isbn}
             onChange={(e) => handleInputChange(index, 'isbn', e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded mb-1"
+            placeholder={`Book ${index + 1} ISBN13`}
+            className="p-2 border border-gray-300 rounded"
           />
           <input
             type="text"
-            placeholder="or Enter CopyLocationID"
             value={input.copyLocationID}
             onChange={(e) => handleInputChange(index, 'copyLocationID', e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded"
+            placeholder={`Book ${index + 1} CopyLocationID`}
+            className="p-2 border border-gray-300 rounded"
           />
         </div>
       ))}
+      <button
+        onClick={fetchBookDetails}
+        className="w-full bg-blue-600 text-white py-2 rounded mt-4"
+      >
+        Issue Books
+      </button>
 
-      {!bookDetails.length ? (
-        <button
-          onClick={fetchBookDetails}
-          className="w-full bg-blue-600 text-white py-2 mt-4 rounded"
-        >
-          Issue Books
-        </button>
-      ) : (
-        <>
-          <h3 className="text-lg font-semibold mt-4 mb-2">Confirm Book Details</h3>
-          {bookDetails.map((book, idx) => (
-            <div key={idx} className="flex items-center gap-4 border p-2 rounded mb-2">
-              {book.Thumbnail && <img src={book.Thumbnail} alt="Thumb" className="w-16 h-auto rounded" />}
-              <div>
-                <p className="font-bold">{book.Title}</p>
-                <p className="text-sm">{book.Authors}</p>
+      {bookDetails.length > 0 && !confirmed && (
+        <div className="mt-6">
+          <h3 className="text-xl font-semibold mb-4">Confirm Book Details</h3>
+          <div className="space-y-4">
+            {bookDetails.map((book, i) => (
+              <div key={i} className="flex items-start space-x-4">
+                {book.Thumbnail && (
+                  <img src={book.Thumbnail} alt="thumb" className="w-16 h-24 object-cover rounded" />
+                )}
+                <div>
+                  <p className="font-bold">{book.Title}</p>
+                  <p className="text-sm">{book.Authors}</p>
+                  <p className="text-sm text-gray-500">{book.ISBN13}</p>
+                </div>
               </div>
-            </div>
-          ))}
-
-          <button
-            onClick={confirmIssue}
-            className="w-full bg-green-600 text-white py-2 mt-4 rounded"
-          >
-            Confirm & Issue
-          </button>
-        </>
+            ))}
+            <button
+              onClick={issueBooks}
+              className="w-full bg-green-600 text-white py-2 rounded mt-4"
+            >
+              Confirm & Issue
+            </button>
+          </div>
+        </div>
       )}
-
-      {message && <p className="mt-4 text-center text-green-700 font-semibold">{message}</p>}
+      {message && <p className="mt-6 text-center text-lg text-green-700">{message}</p>}
     </div>
   );
 }
