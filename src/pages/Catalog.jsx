@@ -4,8 +4,7 @@ import { FaExternalLinkAlt } from 'react-icons/fa';
 
 const PAGE_SIZE = 50;
 
-export default function Catalog() {
-  const [user, setUser] = useState(null);
+export default function Catalog({ user }) {
   const [books, setBooks] = useState([]);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ minAge: '', maxAge: '', author: '', title: '' });
@@ -16,19 +15,12 @@ export default function Catalog() {
   const [addedRequests, setAddedRequests] = useState({});
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data, error } = await supabase.auth.getUser();
-      if (data?.user) {
-        setUser(data.user);
-        fetchReadBooks(data.user.email);
-      }
-    };
-    getUser();
-  }, []);
+    if (user?.email) fetchReadBooks(user.email);
+  }, [user]);
 
   useEffect(() => {
-    if (user) loadBooks();
-  }, [page, appliedFilters, user]);
+    loadBooks();
+  }, [page, appliedFilters]);
 
   const fetchReadBooks = async (email) => {
     const { data: customer, error } = await supabase
@@ -44,9 +36,7 @@ export default function Catalog() {
       .select('ISBN13')
       .eq('MemberID', customer.CustomerID);
 
-    if (readHistory?.length) {
-      setHiddenRead(readHistory.map(b => b.ISBN13));
-    }
+    if (readHistory) setHiddenRead(readHistory.map(b => b.ISBN13));
   };
 
   const applyFilters = () => {
@@ -60,47 +50,40 @@ export default function Catalog() {
       return;
     }
 
-    const { data: customer } = await supabase
+    const { data: customer, error: customerError } = await supabase
       .from('customerinfo')
       .select('CustomerID')
       .eq('EmailID', user.email)
       .single();
 
-    if (!customer) {
+    if (customerError || !customer) {
       alert('User not found in customerinfo.');
       return;
     }
 
     const customerID = customer.CustomerID;
 
-const { data: existingRequests, error: serialFetchError } = await supabase
-  .from('circulationfuture')
-  .select('SerialNumberOfIssue')
-  .eq('ISBN13', book.ISBN13)
-  .eq('CustomerID', customerID)
-  .order('SerialNumberOfIssue', { ascending: false })
-  .limit(1);
+    const { data: existingRequests, error: serialFetchError } = await supabase
+      .from('circulationfuture')
+      .select('SerialNumberOfIssue')
+      .eq('ISBN13', book.ISBN13)
+      .eq('CustomerID', customerID)
+      .order('SerialNumberOfIssue', { ascending: false })
+      .limit(1);
 
-if (serialFetchError) {
-  console.error('Error fetching existing requests:', serialFetchError);
-  alert('Could not check existing requests. Please try again.');
-  return;
-}
-
-const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
+    if (serialFetchError) {
+      alert('Could not check existing requests.');
+      return;
+    }
 
     const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
 
-    const { error } = await supabase.from('circulationfuture').insert({
-      ISBN13: book.ISBN13,
-      CopyNumber: null,
-      SerialNumberOfIssue: nextSerial,
-      CustomerID: customerID,
-    });
+    const { error: insertError } = await supabase
+      .from('circulationfuture')
+      .insert({ ISBN13: book.ISBN13, CopyNumber: null, SerialNumberOfIssue: nextSerial, CustomerID: customerID });
 
-    if (error) {
-      console.error('Error adding request:', error);
-      alert('Failed to add request. Try again later.');
+    if (insertError) {
+      alert('Failed to add request.');
       return;
     }
 
@@ -109,10 +92,7 @@ const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
 
   const loadBooks = async () => {
     setLoading(true);
-    let query = supabase
-      .from('catalog')
-      .select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description')
-      .limit(200);
+    let query = supabase.from('catalog').select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description').limit(200);
 
     if (appliedFilters) {
       const { minAge, maxAge, author, title } = appliedFilters;
@@ -123,61 +103,36 @@ const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
 
     const { data: catalogBooks, error: catalogError } = await query;
     if (catalogError) {
-      console.error('Error loading books:', catalogError);
       setLoading(false);
       return;
     }
 
     const isbnList = catalogBooks.map(book => book.ISBN13);
-    const { data: copyinfo, error: copyError } = await supabase
+    const { data: copyinfo } = await supabase
       .from('copyinfo')
       .select('ISBN13, CopyBooked, AskPrice')
       .in('ISBN13', isbnList);
 
-    if (copyError) {
-      console.error('Error fetching copyinfo:', copyError);
-      setLoading(false);
-      return;
-    }
-
     const availabilityMap = {};
     const priceMap = {};
-
     for (const copy of copyinfo) {
       if (!availabilityMap[copy.ISBN13]) availabilityMap[copy.ISBN13] = false;
       if (!copy.CopyBooked) availabilityMap[copy.ISBN13] = true;
-
-      if (copy.AskPrice !== null) {
-        if (!priceMap[copy.ISBN13] || copy.AskPrice < priceMap[copy.ISBN13]) {
-          priceMap[copy.ISBN13] = copy.AskPrice;
-        }
+      if (copy.AskPrice !== null && (!priceMap[copy.ISBN13] || copy.AskPrice < priceMap[copy.ISBN13])) {
+        priceMap[copy.ISBN13] = copy.AskPrice;
       }
     }
 
-    const filteredBooks = [];
-    for (const book of catalogBooks) {
-      if (!availabilityMap[book.ISBN13]) continue;
-      if (hiddenRead && hiddenRead.includes(book.ISBN13)) continue;
-
-      book.minPrice = priceMap[book.ISBN13] ?? null;
-      filteredBooks.push(book);
-    }
+    const filteredBooks = catalogBooks.filter(book => availabilityMap[book.ISBN13] && !hiddenRead.includes(book.ISBN13));
+    filteredBooks.forEach(book => book.minPrice = priceMap[book.ISBN13] ?? null);
 
     const randomized = filteredBooks.sort(() => 0.5 - Math.random());
-    const pagedBooks = randomized.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-    setBooks(pagedBooks);
+    setBooks(randomized.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
     setLoading(false);
   };
 
-  const handleFilterChange = (field, value) => {
-    setFilters(prev => ({ ...prev, [field]: value }));
-  };
-
-  const toggleDescription = (id) => {
-    setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  if (!user) return <p className="p-4 text-center text-gray-600">Loading user info...</p>;
+  const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
+  const toggleDescription = (id) => setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
 
   return (
     <div className="p-4 max-w-7xl mx-auto bg-gradient-to-br from-blue-50 to-pink-50 min-h-screen">
@@ -190,9 +145,7 @@ const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
           <input type="text" placeholder="Author" className="input" onChange={e => handleFilterChange('author', e.target.value)} />
           <input type="text" placeholder="Title" className="input" onChange={e => handleFilterChange('title', e.target.value)} />
         </div>
-        <button className="mt-3 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-800" onClick={applyFilters}>
-          Apply Filters
-        </button>
+        <button className="mt-3 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-800" onClick={applyFilters}>Apply Filters</button>
       </div>
 
       {hiddenRead?.length > 0 && <p className="text-sm text-red-600 font-medium mb-4">Hidden books already read previously by you.</p>}
