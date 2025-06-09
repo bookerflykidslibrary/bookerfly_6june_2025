@@ -57,6 +57,7 @@ export default function Catalog({ user }) {
   };
 
   const handleBookRequest = async (book) => {
+console.log('User object in handleBookRequest:', user);
     if (!user?.email) {
       alert('Please log in to request a book.');
       return;
