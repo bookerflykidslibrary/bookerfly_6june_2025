@@ -8,82 +8,62 @@ export default function MyBooks() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error } = await supabase.auth.getUser();
       if (user) {
         setUserId(user.id);
         fetchBookings(user.id);
         fetchHistory(user.id);
+      } else if (error) {
+        console.error('Error fetching user:', error.message);
       }
     };
     fetchUser();
   }, []);
 
-  const fetchBookings = async (userId) => {
+  const fetchBookings = async (uid) => {
     const { data, error } = await supabase
       .from('circulationfuture')
-      .select('SerialNumberOfIssue, ISBN13, CopyNumber, catalog:ISBN13 (Title, Authors, Thumbnail)')
-      .eq('userid', userId)
+      .select(`
+        SerialNumberOfIssue,
+        ISBN13,
+        CopyNumber,
+        catalog:ISBN13 (
+          Title,
+          Authors,
+          Thumbnail
+        )
+      `)
+      .eq('userid', uid)
       .order('SerialNumberOfIssue', { ascending: true });
 
     if (error) {
-      console.error('Error fetching bookings:', error);
+      console.error('Error fetching bookings:', error.message);
     } else {
       setBookings(data);
     }
   };
 
-  const fetchHistory = async (userId) => {
+  const fetchHistory = async (uid) => {
     const { data, error } = await supabase
       .from('circulationhistory')
-      .select('BookingDate, ReturnDate, ISBN13, catalog:ISBN13 (Title, Authors, Thumbnail)')
-      .eq('userid', userId) // ✅ match actual column name here
+      .select(`
+        BookingDate,
+        ReturnDate,
+        ISBN13,
+        catalog:ISBN13 (
+          Title,
+          Authors,
+          Thumbnail
+        )
+      `)
+      .eq('userid', uid)
       .order('BookingDate', { ascending: false });
 
     if (error) {
-      console.error('Error fetching history:', error);
+      console.error('Error fetching history:', error.message);
     } else {
       setHistory(data);
     }
-  };
-
-  const moveUpQueue = async (isbn, copyNumber) => {
-    if (!userId) return;
-
-    const { data: allBookings } = await supabase
-      .from('circulationfuture')
-      .select('*')
-      .eq('userid', userId)
-      .eq('ISBN13', isbn)
-      .eq('CopyNumber', copyNumber)
-      .order('SerialNumberOfIssue');
-
-    if (!allBookings || allBookings.length === 0) return;
-
-    const updates = [];
-    let newSerial = 2;
-
-    for (const booking of allBookings) {
-      if (booking.userid === userId) {
-        updates.push({
-          ...booking,
-          SerialNumberOfIssue: 1
-        });
-      } else {
-        updates.push({
-          ...booking,
-          SerialNumberOfIssue: newSerial++
-        });
-      }
-    }
-
-    const { error } = await supabase.rpc('bulk_update_serials', {
-      updates: updates.map(b => ({
-        circulationid: b.CirculationID,
-        serialnumber: b.SerialNumberOfIssue
-      }))
-    });
-
-    if (!error) fetchBookings(userId);
   };
 
   return (
@@ -98,12 +78,6 @@ export default function MyBooks() {
               <div className="text-sm text-gray-600">{b.catalog?.Authors}</div>
               <div className="text-xs text-gray-500">Serial #: {b.SerialNumberOfIssue}</div>
             </div>
-            <button
-              className="px-3 py-1 bg-blue-500 text-white rounded"
-              onClick={() => moveUpQueue(b.ISBN13, b.CopyNumber)}
-            >
-              Move up the queue
-            </button>
           </div>
         ))}
       </div>
