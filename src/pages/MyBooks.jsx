@@ -8,13 +8,11 @@ export default function MyBooks() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUserId(user.id);
         fetchBookings(user.id);
         fetchHistory(user.id);
-      } else if (error) {
-        console.error('Error fetching user:', error.message);
       }
     };
     fetchUser();
@@ -66,6 +64,46 @@ export default function MyBooks() {
     }
   };
 
+  const moveUpQueue = async (isbn, copyNumber) => {
+    if (!userId) return;
+
+    const { data: allBookings } = await supabase
+      .from('circulationfuture')
+      .select('*')
+      .eq('userid', userId)
+      .eq('ISBN13', isbn)
+      .eq('CopyNumber', copyNumber)
+      .order('SerialNumberOfIssue');
+
+    if (!allBookings || allBookings.length === 0) return;
+
+    const updates = [];
+    let newSerial = 2;
+
+    for (const booking of allBookings) {
+      if (booking.userid === userId) {
+        updates.push({
+          ...booking,
+          SerialNumberOfIssue: 1
+        });
+      } else {
+        updates.push({
+          ...booking,
+          SerialNumberOfIssue: newSerial++
+        });
+      }
+    }
+
+    const { error } = await supabase.rpc('bulk_update_serials', {
+      updates: updates.map(b => ({
+        circulationid: b.CirculationID,
+        serialnumber: b.SerialNumberOfIssue
+      }))
+    });
+
+    if (!error) fetchBookings(userId);
+  };
+
   return (
     <div className="p-4">
       <h2 className="text-xl font-bold mb-4">Your Booked Copies</h2>
@@ -78,8 +116,17 @@ export default function MyBooks() {
               <div className="text-sm text-gray-600">{b.catalog?.Authors}</div>
               <div className="text-xs text-gray-500">Serial #: {b.SerialNumberOfIssue}</div>
             </div>
+            <button
+              className="px-3 py-1 bg-blue-500 text-white rounded"
+              onClick={() => moveUpQueue(b.ISBN13, b.CopyNumber)}
+            >
+              Move up the queue
+            </button>
           </div>
         ))}
+        {bookings.length === 0 && (
+          <p className="text-sm text-gray-500">No current bookings found.</p>
+        )}
       </div>
 
       <h2 className="text-xl font-bold mt-10 mb-4">Circulation History</h2>
@@ -97,6 +144,9 @@ export default function MyBooks() {
             </div>
           </div>
         ))}
+        {history.length === 0 && (
+          <p className="text-sm text-gray-500">No previous history found.</p>
+        )}
       </div>
     </div>
   );
