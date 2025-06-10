@@ -40,7 +40,7 @@ export default function MyBooks() {
     const { data, error } = await supabase
       .from('circulationhistory')
       .select('BookingDate, ReturnDate, ISBN13, catalog:ISBN13 (Title, Authors, Thumbnail)')
-      .eq('memberid', uid)
+      .eq('MemberID', uid)
       .order('BookingDate', { ascending: false });
 
     if (error) {
