@@ -106,7 +106,7 @@ export default function MyBooks() {
 
   return (
     <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">Your Booked Copies</h2>
+      <h2 className="text-xl font-bold mb-4">Your future requests, will be sent to you based on availability in given order. Please click buttons below to change the priority of your bookings.</h2>
       <div className="grid gap-4">
         {bookings.map((b, idx) => (
           <div key={idx} className="border p-4 rounded-md flex gap-4 items-center">
