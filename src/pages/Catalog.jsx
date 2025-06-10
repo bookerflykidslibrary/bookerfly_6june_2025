@@ -13,10 +13,18 @@ export default function Catalog({ user }) {
   const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
   const [addedRequests, setAddedRequests] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    if (user?.email) fetchReadBooks(user.email);
-  }, [user]);
+    const fetchUser = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser?.email) {
+        setCurrentUser(authUser);
+        fetchReadBooks(authUser.email);
+      }
+    };
+    fetchUser();
+  }, []);
 
   useEffect(() => {
     loadBooks();
@@ -45,15 +53,19 @@ export default function Catalog({ user }) {
   };
 
   const handleBookRequest = async (book) => {
-    if (!user?.email) {
+    const sessionUser = currentUser ?? (await supabase.auth.getUser()).data.user;
+
+    if (!sessionUser?.email) {
       alert('Please log in to request a book.');
       return;
     }
 
+    const email = sessionUser.email;
+
     const { data: customer, error: customerError } = await supabase
       .from('customerinfo')
       .select('CustomerID')
-      .eq('EmailID', user.email)
+      .eq('EmailID', email)
       .single();
 
     if (customerError || !customer) {
