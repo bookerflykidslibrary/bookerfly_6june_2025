@@ -13,18 +13,10 @@ export default function Catalog({ user }) {
   const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
   const [addedRequests, setAddedRequests] = useState({});
-  const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser?.email) {
-        setCurrentUser(authUser);
-        fetchReadBooks(authUser.email);
-      }
-    };
-    fetchUser();
-  }, []);
+    if (user?.email) fetchReadBooks(user.email);
+  }, [user]);
 
   useEffect(() => {
     loadBooks();
@@ -33,7 +25,7 @@ export default function Catalog({ user }) {
   const fetchReadBooks = async (email) => {
     const { data: customer, error } = await supabase
       .from('customerinfo')
-      .select('CustomerID')
+      .select('userid')
       .eq('EmailID', email)
       .single();
 
@@ -42,7 +34,7 @@ export default function Catalog({ user }) {
     const { data: readHistory } = await supabase
       .from('circulationhistory')
       .select('ISBN13')
-      .eq('MemberID', customer.CustomerID);
+      .eq('MemberID', customer.userid);
 
     if (readHistory) setHiddenRead(readHistory.map(b => b.ISBN13));
   };
@@ -53,19 +45,15 @@ export default function Catalog({ user }) {
   };
 
   const handleBookRequest = async (book) => {
-    const sessionUser = currentUser ?? (await supabase.auth.getUser()).data.user;
-
-    if (!sessionUser?.email) {
+    if (!user?.email) {
       alert('Please log in to request a book.');
       return;
     }
 
-    const email = sessionUser.email;
-
     const { data: customer, error: customerError } = await supabase
       .from('customerinfo')
-      .select('CustomerID')
-      .eq('EmailID', email)
+      .select('userid')
+      .eq('EmailID', user.email)
       .single();
 
     if (customerError || !customer) {
@@ -73,13 +61,13 @@ export default function Catalog({ user }) {
       return;
     }
 
-    const customerID = customer.CustomerID;
+    const userID = customer.userid;
 
     const { data: existingRequests, error: serialFetchError } = await supabase
       .from('circulationfuture')
       .select('SerialNumberOfIssue')
       .eq('ISBN13', book.ISBN13)
-      .eq('CustomerID', customerID)
+      .eq('userid', userID)
       .order('SerialNumberOfIssue', { ascending: false })
       .limit(1);
 
@@ -92,7 +80,12 @@ export default function Catalog({ user }) {
 
     const { error: insertError } = await supabase
       .from('circulationfuture')
-      .insert({ ISBN13: book.ISBN13, CopyNumber: null, SerialNumberOfIssue: nextSerial, CustomerID: customerID });
+      .insert({
+        ISBN13: book.ISBN13,
+        CopyNumber: null,
+        SerialNumberOfIssue: nextSerial,
+        userid: userID
+      });
 
     if (insertError) {
       alert('Failed to add request.');
