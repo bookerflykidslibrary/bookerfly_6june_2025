@@ -26,8 +26,8 @@ export default function Navbar() {
           <button onClick={handleLogout}>Logout</button>
         ) : (
           <Link to="/login">Login</Link>
-          <Link to="/signup" className="hover:underline">Sign Up</Link>
         )}
+        <Link to="/signup" className="hover:underline">Sign Up</Link>
       </div>
     </nav>
   )
