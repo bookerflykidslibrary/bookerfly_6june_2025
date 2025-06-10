@@ -1,51 +1,44 @@
 import React, { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
-export default function MyBooks() {
+export default function MyBooks({ user }) {
   const [bookings, setBookings] = useState([]);
   const [history, setHistory] = useState([]);
-  const [userId, setUserId] = useState(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setUserId(user.id);
-        fetchBookings(user.id);
-        fetchHistory(user.id);
-      }
-    };
-    fetchUser();
-  }, []);
+    if (user?.id) {
+      fetchBookings(user.id);
+      fetchHistory(user.id);
+    }
+  }, [user]);
 
-  const fetchBookings = async (customerId) => {
+  const fetchBookings = async (userId) => {
     const { data, error } = await supabase
       .from('circulationfuture')
       .select('SerialNumberOfIssue, ISBN13, CopyNumber, catalog:ISBN13 (Title, Authors, Thumbnail)')
-      .eq('CustomerID', customerId)
+      .eq('userid', userId)
       .order('SerialNumberOfIssue', { ascending: true });
 
     if (!error) setBookings(data);
   };
 
-  const fetchHistory = async (customerId) => {
+  const fetchHistory = async (userId) => {
     const { data, error } = await supabase
       .from('circulationhistory')
       .select('BookingDate, ReturnDate, ISBN13, catalog:ISBN13 (Title, Authors, Thumbnail)')
-      .eq('MemberID', customerId)
+      .eq('MemberID', userId)
       .order('BookingDate', { ascending: false });
 
     if (!error) setHistory(data);
   };
 
   const moveUpQueue = async (isbn, copyNumber) => {
-    if (!userId) return;
+    if (!user?.id) return;
 
     // Step 1: Fetch all bookings for this ISBN and CopyNumber
     const { data: allBookings } = await supabase
       .from('circulationfuture')
       .select('*')
-      .eq('CustomerID', userId)
       .eq('ISBN13', isbn)
       .eq('CopyNumber', copyNumber)
       .order('SerialNumberOfIssue');
@@ -57,7 +50,7 @@ export default function MyBooks() {
     let newSerial = 2;
 
     for (const booking of allBookings) {
-      if (booking.CustomerID === userId) {
+      if (booking.userid === user.id) {
         updates.push({
           ...booking,
           SerialNumberOfIssue: 1
@@ -77,7 +70,7 @@ export default function MyBooks() {
       }))
     });
 
-    if (!error) fetchBookings(userId);
+    if (!error) fetchBookings(user.id);
   };
 
   return (
