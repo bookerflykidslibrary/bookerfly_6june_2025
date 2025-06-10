@@ -8,11 +8,7 @@ export default function MyBooks() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error) {
-        console.error("Error fetching user:", error.message);
-        return;
-      }
+      const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUserId(user.id);
         fetchBookings(user.id);
@@ -22,29 +18,29 @@ export default function MyBooks() {
     fetchUser();
   }, []);
 
-  const fetchBookings = async (uid) => {
+  const fetchBookings = async (userId) => {
     const { data, error } = await supabase
       .from('circulationfuture')
       .select('SerialNumberOfIssue, ISBN13, CopyNumber, catalog:ISBN13 (Title, Authors, Thumbnail)')
-      .eq('userid', uid)
+      .eq('userid', userId)
       .order('SerialNumberOfIssue', { ascending: true });
 
     if (error) {
-      console.error("Error fetching bookings:", error.message);
+      console.error('Error fetching bookings:', error);
     } else {
       setBookings(data);
     }
   };
 
-  const fetchHistory = async (uid) => {
+  const fetchHistory = async (userId) => {
     const { data, error } = await supabase
       .from('circulationhistory')
       .select('BookingDate, ReturnDate, ISBN13, catalog:ISBN13 (Title, Authors, Thumbnail)')
-      .eq('MemberID', uid)
+      .eq('userid', userId) // ✅ match actual column name here
       .order('BookingDate', { ascending: false });
 
     if (error) {
-      console.error("Error fetching history:", error.message);
+      console.error('Error fetching history:', error);
     } else {
       setHistory(data);
     }
@@ -53,7 +49,7 @@ export default function MyBooks() {
   const moveUpQueue = async (isbn, copyNumber) => {
     if (!userId) return;
 
-    const { data: allBookings, error } = await supabase
+    const { data: allBookings } = await supabase
       .from('circulationfuture')
       .select('*')
       .eq('userid', userId)
@@ -61,10 +57,7 @@ export default function MyBooks() {
       .eq('CopyNumber', copyNumber)
       .order('SerialNumberOfIssue');
 
-    if (error || !allBookings || allBookings.length === 0) {
-      console.error("Error fetching bookings to update queue:", error?.message);
-      return;
-    }
+    if (!allBookings || allBookings.length === 0) return;
 
     const updates = [];
     let newSerial = 2;
@@ -83,18 +76,14 @@ export default function MyBooks() {
       }
     }
 
-    const { error: updateError } = await supabase.rpc('bulk_update_serials', {
+    const { error } = await supabase.rpc('bulk_update_serials', {
       updates: updates.map(b => ({
         circulationid: b.CirculationID,
         serialnumber: b.SerialNumberOfIssue
       }))
     });
 
-    if (updateError) {
-      console.error("Queue update failed:", updateError.message);
-    } else {
-      fetchBookings(userId);
-    }
+    if (!error) fetchBookings(userId);
   };
 
   return (

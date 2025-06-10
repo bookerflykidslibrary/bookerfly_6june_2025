@@ -175,7 +175,7 @@ export default function Catalog({ user }) {
                 onClick={() => handleBookRequest(book)}
                 className="text-white bg-blue-500 px-3 py-1 mt-2 rounded hover:bg-blue-700 text-xs w-fit"
               >
-                {addedRequests[book.ISBN13] ? 'Added to your future requests :-)' : 'Book for Me'}
+                {addedRequests[book.ISBN13] ? 'Added to your future requests :-)' : 'Request for Me'}
               </button>
               <div className="mt-2 text-xs text-gray-700">
                 <div className="flex flex-col sm:flex-row gap-2">
