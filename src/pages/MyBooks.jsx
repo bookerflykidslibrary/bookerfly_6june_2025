@@ -18,32 +18,26 @@ export default function MyBooks() {
     fetchUser();
   }, []);
 
-  const fetchBookings = async (userId) => {
+  const fetchBookings = async (uid) => {
     const { data, error } = await supabase
       .from('circulationfuture')
-      .select('SerialNumberOfIssue, ISBN13, CopyNumber, catalog(Title, Authors, Thumbnail)')
-      .eq('userid', userId)
+      .select('SerialNumberOfIssue, ISBN13, CopyNumber, catalog:ISBN13(Title, Authors, Thumbnail)')
+      .eq('userid', uid)
       .order('SerialNumberOfIssue', { ascending: true });
 
-    if (error) {
-      console.error('Error fetching bookings:', error.message);
-    } else {
-      setBookings(data);
-    }
+    if (!error) setBookings(data);
+    else console.error('Error fetching bookings:', error);
   };
 
-  const fetchHistory = async (userId) => {
+  const fetchHistory = async (uid) => {
     const { data, error } = await supabase
       .from('circulationhistory')
-      .select('BookingDate, ReturnDate, ISBN13, catalog(Title, Authors, Thumbnail)')
-      .eq('MemberID', userId)
+      .select('BookingDate, ReturnDate, ISBN13, catalog:ISBN13(Title, Authors, Thumbnail)')
+      .eq('MemberID', uid)
       .order('BookingDate', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching history:', error.message);
-    } else {
-      setHistory(data);
-    }
+    if (!error) setHistory(data);
+    else console.error('Error fetching history:', error);
   };
 
   const moveUpQueue = async (isbn, copyNumber) => {
@@ -82,18 +76,14 @@ export default function MyBooks() {
       }))
     });
 
-    if (error) {
-      console.error('Error moving up queue:', error.message);
-    } else {
-      fetchBookings(userId);
-    }
+    if (!error) fetchBookings(userId);
+    else console.error('Error updating serials:', error);
   };
 
   return (
     <div className="p-4">
       <h2 className="text-xl font-bold mb-4">Your Booked Copies</h2>
       <div className="grid gap-4">
-        {bookings.length === 0 && <p className="text-gray-500">No future bookings found.</p>}
         {bookings.map((b, idx) => (
           <div key={idx} className="border p-4 rounded-md flex gap-4 items-center">
             <img src={b.catalog?.Thumbnail} alt="Thumbnail" className="w-16 h-20 object-cover" />
@@ -114,7 +104,6 @@ export default function MyBooks() {
 
       <h2 className="text-xl font-bold mt-10 mb-4">Circulation History</h2>
       <div className="grid gap-4">
-        {history.length === 0 && <p className="text-gray-500">No history available.</p>}
         {history.map((h, idx) => (
           <div key={idx} className="border p-4 rounded-md flex gap-4 items-center">
             <img src={h.catalog?.Thumbnail} alt="Thumbnail" className="w-16 h-20 object-cover" />
