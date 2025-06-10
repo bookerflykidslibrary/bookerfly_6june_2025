@@ -21,37 +21,47 @@ const publicPaths = ['/', '/login', '/catalog'];
 
 function AppRoutes() {
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-
       const path = location.pathname.toLowerCase();
+
       if (!session && !publicPaths.includes(path)) {
         navigate('/login');
       }
 
+      setUser(session?.user || null);
       setLoading(false);
     };
 
     checkAuth();
+
+    // Also listen to auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => listener?.subscription?.unsubscribe();
   }, [location.pathname]);
 
   if (loading) return <div className="p-4 text-center text-gray-500">Checking auth...</div>;
 
   return (
     <>
-      <Navbar />
+      <Navbar user={user} />
       <Routes>
-        <Route path="/" element={<Catalog />} />
-        <Route path="/catalog" element={<Catalog />} />
+        <Route path="/" element={<Catalog user={user} />} />
+        <Route path="/catalog" element={<Catalog user={user} />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/my-books" element={<MyBooks />} />
-        <Route path="/recommendations" element={<Recommendations />} />
-        <Route path="/admin/add-book" element={<AdminAddBook />} />
-        <Route path="/admin/issue-books" element={<IssueBooks />} />
+        <Route path="/my-books" element={<MyBooks user={user} />} />
+        <Route path="/recommendations" element={<Recommendations user={user} />} />
+        <Route path="/admin/add-book" element={<AdminAddBook user={user} />} />
+        <Route path="/admin/issue-books" element={<IssueBooks user={user} />} />
       </Routes>
     </>
   );
