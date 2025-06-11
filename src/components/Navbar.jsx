@@ -34,6 +34,7 @@ export default function Navbar({ user }) {
         ) : (
           <Link to="/login" className="hover:underline">Login</Link>
         )}
+        {user?.email === 'vkansal12@gmail.com' && <Link to="/signup" className="hover:underline">Sign Up</Link>}
       </div>
     </nav>
   )
