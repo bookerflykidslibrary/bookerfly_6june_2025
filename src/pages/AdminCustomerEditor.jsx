@@ -9,7 +9,6 @@ export default function AdminCustomerEditor({ user }) {
 
   useEffect(() => {
     if (!user) return;
-
     console.log('👤 Logged in as:', user.email);
     console.log('🔑 is_admin:', user.app_metadata?.is_admin);
     console.log('🔑 API KEY present:', !!process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY);
@@ -31,18 +30,26 @@ export default function AdminCustomerEditor({ user }) {
         `ContactNo.ilike.*${trimmed}*`,
       ];
 
-      if (isNumeric) {
-        orClause.push(`CustomerID.eq.${trimmed}`);
-      }
+      console.log('🔍 Autocomplete OR clause:', orClause.join(','));
 
-      const finalOrClause = orClause.join(',');
-      console.log('🔍 Autocomplete OR clause (no wrapping):', finalOrClause);
-
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('customerinfo')
         .select('CustomerID, CustomerName, EmailID, ContactNo')
-        .or(finalOrClause) // ✅ NO extra parentheses
+        .or(orClause.join(','))
         .limit(10);
+
+      // If search is numeric, fetch exact CustomerID match too
+      if (isNumeric) {
+        const { data: idData, error: idError } = await supabase
+          .from('customerinfo')
+          .select('CustomerID, CustomerName, EmailID, ContactNo')
+          .eq('CustomerID', trimmed)
+          .limit(1);
+
+        if (!idError && idData.length > 0) {
+          data = [...(data || []), ...idData];
+        }
+      }
 
       if (error) {
         console.error('❌ Autocomplete error:', error.message);
@@ -64,7 +71,6 @@ export default function AdminCustomerEditor({ user }) {
       .single();
 
     if (!error) {
-      console.log('✅ Customer loaded:', data);
       setSelectedCustomer(data);
       setFormData(data);
       setSuggestions([]);
