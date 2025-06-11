@@ -15,7 +15,9 @@ function buildSafeOrClause(search) {
     conditions.push(`CustomerID.eq.${trimmed}`);
   }
 
-  return encodeURIComponent(`(${conditions.join(',')})`);
+  const clause = `(${conditions.join(',')})`;
+  console.log('🧠 Unencoded OR clause:', clause);
+  return encodeURIComponent(clause);
 }
 
 export default function AdminCustomerEditor({ user }) {
@@ -31,33 +33,51 @@ export default function AdminCustomerEditor({ user }) {
     }
 
     const fetchSuggestions = async () => {
-      const orEncoded = buildSafeOrClause(search);
-      const url = `https://sawufgyypmprtnuwvgnd.supabase.co/rest/v1/customerinfo?select=CustomerID,Name,EmailID,MobileNumber&or=${orEncoded}&limit=10`;
+      console.log('🔎 Starting search for:', search);
+      const encodedOr = buildSafeOrClause(search);
+      const supabaseUrl = process.env.REACT_APP_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY;
 
-      console.log('🔍 Fetching:', url);
+      console.log('🔐 Supabase URL:', supabaseUrl);
+      console.log('🔐 Supabase KEY present:', !!supabaseKey);
 
-      const response = await fetch(url, {
-        headers: {
-          apikey: process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY}`,
-        },
-      });
+      const fullUrl = `${supabaseUrl}/rest/v1/customerinfo?select=CustomerID,Name,EmailID,MobileNumber&or=${encodedOr}&limit=10`;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Bad request:', errorText);
+      console.log('🌐 Full request URL:', fullUrl);
+
+      try {
+        const response = await fetch(fullUrl, {
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+          },
+        });
+
+        console.log('📥 Response status:', response.status);
+
+        const text = await response.text();
+        console.log('📦 Raw response body:', text);
+
+        if (!response.ok) {
+          console.error('❌ Failed to fetch suggestions:', text);
+          setSuggestions([]);
+          return;
+        }
+
+        const data = JSON.parse(text);
+        console.log('✅ Parsed suggestions:', data.length, 'items');
+        setSuggestions(data);
+      } catch (err) {
+        console.error('💥 Fetch exception:', err.message);
         setSuggestions([]);
-        return;
       }
-
-      const data = await response.json();
-      setSuggestions(data);
     };
 
     fetchSuggestions();
   }, [search]);
 
   const handleSelect = async (customerId) => {
+    console.log('📋 Loading full customer info for ID:', customerId);
     const { data, error } = await supabase
       .from('customerinfo')
       .select('*')
@@ -65,11 +85,13 @@ export default function AdminCustomerEditor({ user }) {
       .single();
 
     if (!error) {
+      console.log('✅ Loaded customer:', data);
       setSelectedCustomer(data);
       setFormData(data);
       setSuggestions([]);
       setSearch('');
     } else {
+      console.error('❌ Could not load customer:', error.message);
       alert('Customer not found');
     }
   };
@@ -79,13 +101,17 @@ export default function AdminCustomerEditor({ user }) {
   };
 
   const handleSave = async () => {
+    console.log('💾 Saving updated data:', formData);
     const { error } = await supabase
       .from('customerinfo')
       .update(formData)
       .eq('CustomerID', formData.CustomerID);
 
     if (!error) alert('✅ Customer updated successfully!');
-    else alert('❌ Failed to update.');
+    else {
+      console.error('❌ Save failed:', error.message);
+      alert('Failed to update.');
+    }
   };
 
   if (user?.email !== 'vkansal12@gmail.com') {
