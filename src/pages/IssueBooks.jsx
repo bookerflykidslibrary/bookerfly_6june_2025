@@ -37,54 +37,32 @@ export default function IssueBooks() {
   };
 
   const handleScannedISBN = (isbn) => {
-    const indexToFill = bookInputs.findIndex(entry => entry.value.trim() === '');
-    if (indexToFill !== -1) {
-      const updated = [...bookInputs];
+    setBookInputs((prevInputs) => {
+      const indexToFill = prevInputs.findIndex(entry => entry.value.trim() === '');
+      if (indexToFill === -1) {
+        setMessage('All input boxes are full! Stopping scanner.');
+        stopScanner();
+        return prevInputs;
+      }
+      const updated = [...prevInputs];
       updated[indexToFill] = { value: isbn, type: 'ISBN13' };
-      setBookInputs(updated);
       setMessage(`✅ Scanned ISBN: ${isbn}`);
-    } else {
-      setMessage('All input boxes are full! Stopping scanner.');
-      stopScanner();
-    }
+      return updated;
+    });
   };
 
   const startScanner = async () => {
     if (scanning) return;
     setScanning(true);
-
-    setTimeout(() => {
-      const scannerElement = document.getElementById("scanner");
-      if (!scannerElement) {
-        setMessage("❌ Scanner div not found.");
-        setScanning(false);
-        return;
-      }
-
-      try {
-        html5QrCodeRef.current = new Html5Qrcode("scanner");
-        html5QrCodeRef.current
-          .start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: 250 },
-            (decodedText) => {
-              handleScannedISBN(decodedText);
-            },
-            (error) => {
-              // silent error
-            }
-          )
-          .catch((err) => {
-            console.error("Scanner init error:", err);
-            setMessage("❌ Error starting scanner: " + err);
-            setScanning(false);
-          });
-      } catch (e) {
-        console.error("Scanner exception:", e);
-        setMessage("❌ Scanner initialization failed.");
-        setScanning(false);
-      }
-    }, 300);
+    html5QrCodeRef.current = new Html5Qrcode("scanner");
+    html5QrCodeRef.current.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      (decodedText) => {
+        handleScannedISBN(decodedText);
+      },
+      (error) => {}
+    );
   };
 
   const stopScanner = () => {
@@ -207,10 +185,9 @@ export default function IssueBooks() {
     <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8">
       <h2 className="text-2xl font-bold text-center text-purple-700 mb-4">Issue Books</h2>
 
-      {/* Temporary customer ID input */}
       <input
         type="text"
-        placeholder="Customer ID (temp)"
+        placeholder="Customer ID"
         className="w-full p-2 mb-4 border border-gray-300 rounded"
         onChange={(e) => setSelectedCustomer({ CustomerID: e.target.value })}
       />
@@ -244,16 +221,12 @@ export default function IssueBooks() {
 
       {scanning && (
         <div className="mb-4">
-          <div
-            id="scanner"
-            style={{ width: '100%', height: '300px', backgroundColor: '#f3f4f6' }}
-            className="rounded border border-gray-300"
-          />
+          <div id="scanner" className="w-full h-64 bg-gray-100 rounded" />
           <button
             onClick={stopScanner}
             className="mt-2 text-sm text-red-600 underline"
           >
-            ⛔ Stop Scanning
+            Stop Scanning
           </button>
         </div>
       )}
