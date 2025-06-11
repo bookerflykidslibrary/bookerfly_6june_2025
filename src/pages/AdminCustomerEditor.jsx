@@ -25,33 +25,32 @@ export default function AdminCustomerEditor({ user }) {
       const trimmed = search.trim();
       const isNumeric = /^\d+$/.test(trimmed);
 
+      // Only search text fields with ilike
       const orClause = [
         `CustomerName.ilike.*${trimmed}*`,
         `EmailID.ilike.*${trimmed}*`,
-        `ContactNo.ilike.*${trimmed}*`,
       ];
 
-      console.log('🔍 Autocomplete OR clause:', orClause.join(','));
+      console.log('🔍 Text match OR clause:', orClause.join(','));
 
-      // Try .or() on text fields only
       let { data, error } = await supabase
         .from('customerinfo')
         .select('CustomerID, CustomerName, EmailID, ContactNo')
         .or(orClause.join(','))
         .limit(10);
 
-      // If numeric, add exact CustomerID match separately
+      // Extra matches if numeric input: CustomerID or ContactNo
       if (isNumeric) {
         const { data: idData, error: idError } = await supabase
           .from('customerinfo')
           .select('CustomerID, CustomerName, EmailID, ContactNo')
-          .eq('CustomerID', trimmed)
-          .limit(1);
+          .or(`CustomerID.eq.${trimmed},ContactNo.eq.${trimmed}`)
+          .limit(5);
 
-        if (!idError && idData.length > 0) {
-          const existingIDs = new Set(data?.map((d) => d.CustomerID));
-          const filtered = idData.filter((d) => !existingIDs.has(d.CustomerID));
-          data = [...(data || []), ...filtered];
+        if (!idError && idData?.length > 0) {
+          const seen = new Set(data?.map(d => d.CustomerID));
+          const newOnes = idData.filter(d => !seen.has(d.CustomerID));
+          data = [...(data || []), ...newOnes];
         }
       }
 
@@ -59,7 +58,7 @@ export default function AdminCustomerEditor({ user }) {
         console.error('❌ Autocomplete error:', error.message);
         setSuggestions([]);
       } else {
-        console.log('✅ Suggestions found:', data?.length || 0);
+        console.log('✅ Suggestions:', data?.length || 0);
         setSuggestions(data || []);
       }
     };
@@ -75,7 +74,7 @@ export default function AdminCustomerEditor({ user }) {
       .single();
 
     if (!error) {
-      console.log('✅ Loaded full customer:', data);
+      console.log('✅ Customer loaded:', data);
       setSelectedCustomer(data);
       setFormData(data);
       setSuggestions([]);
