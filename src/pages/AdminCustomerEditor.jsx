@@ -10,15 +10,32 @@ export default function AdminCustomerEditor({ user }) {
 
   useEffect(() => {
     if (search.length < 2) return setSuggestions([]);
+
     const fetchSuggestions = async () => {
-      const { data, error } = await supabase
+      const isNumeric = !isNaN(search.trim());
+      let query = supabase
         .from('customerinfo')
         .select('CustomerID, Name, EmailID, MobileNumber')
-        .or(`Name.ilike.%${search}%,EmailID.ilike.%${search}%,MobileNumber.ilike.%${search}%,CustomerID::text.ilike.%${search}%`)
         .limit(10);
 
-      if (!error) setSuggestions(data);
+      if (isNumeric) {
+        query = query.or(
+          `Name.ilike.%${search}%,EmailID.ilike.%${search}%,MobileNumber.ilike.%${search}%`
+        ).or(`CustomerID.eq.${search}`);
+      } else {
+        query = query.or(
+          `Name.ilike.%${search}%,EmailID.ilike.%${search}%,MobileNumber.ilike.%${search}%`
+        );
+      }
+
+      const { data, error } = await query;
+      if (!error) {
+        setSuggestions(data);
+      } else {
+        console.error('Suggestion fetch error:', error.message);
+      }
     };
+
     fetchSuggestions();
   }, [search]);
 
@@ -34,6 +51,8 @@ export default function AdminCustomerEditor({ user }) {
       setFormData(data);
       setSuggestions([]);
       setSearch('');
+    } else {
+      alert('Customer not found');
     }
   };
 
