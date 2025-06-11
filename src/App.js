@@ -63,7 +63,7 @@ function AppRoutes() {
         <Route path="/recommendations" element={<Recommendations user={user} />} />
         <Route path="/admin/add-book" element={<AdminAddBook user={user} />} />
         <Route path="/admin/issue-books" element={<IssueBooks user={user} />} />
-        <Route path="/signup" element={<SignupForm />} />
+        <Route path="/admin/signup" element={<SignupForm />} />
       </Routes>
     </>
   );
