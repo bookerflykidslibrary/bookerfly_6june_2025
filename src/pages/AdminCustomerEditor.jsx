@@ -12,23 +12,14 @@ export default function AdminCustomerEditor({ user }) {
     if (search.length < 2) return setSuggestions([]);
 
     const fetchSuggestions = async () => {
-      const isNumeric = !isNaN(search.trim());
-      let query = supabase
+      const orClause = `Name.ilike.%${search}%,EmailID.ilike.%${search}%,MobileNumber.ilike.%${search}%,CustomerID.eq.${search}`;
+
+      const { data, error } = await supabase
         .from('customerinfo')
         .select('CustomerID, Name, EmailID, MobileNumber')
+        .or(orClause)
         .limit(10);
 
-      if (isNumeric) {
-        query = query.or(
-          `Name.ilike.%${search}%,EmailID.ilike.%${search}%,MobileNumber.ilike.%${search}%`
-        ).or(`CustomerID.eq.${search}`);
-      } else {
-        query = query.or(
-          `Name.ilike.%${search}%,EmailID.ilike.%${search}%,MobileNumber.ilike.%${search}%`
-        );
-      }
-
-      const { data, error } = await query;
       if (!error) {
         setSuggestions(data);
       } else {
@@ -86,14 +77,14 @@ export default function AdminCustomerEditor({ user }) {
         className="border p-2 rounded w-full"
       />
       {suggestions.length > 0 && (
-        <ul className="bg-white border mt-1 max-h-48 overflow-auto">
+        <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded">
           {suggestions.map(c => (
             <li
               key={c.CustomerID}
               onClick={() => handleSelect(c.CustomerID)}
               className="p-2 hover:bg-blue-100 cursor-pointer"
             >
-              #{c.CustomerID} - {c.Name} ({c.EmailID}, {c.MobileNumber})
+              #{c.CustomerID} — {c.Name}, {c.EmailID}, {c.MobileNumber}
             </li>
           ))}
         </ul>
