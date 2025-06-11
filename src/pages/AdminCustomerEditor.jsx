@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
-// ✅ Helper to build correctly encoded OR clause
+// ✅ Manual encoding: only encode parentheses, not commas
 function buildSafeOrClause(search) {
   const trimmed = search.trim();
   const isNumeric = /^\d+$/.test(trimmed);
@@ -16,10 +16,10 @@ function buildSafeOrClause(search) {
     conditions.push(`CustomerID.eq.${trimmed}`);
   }
 
-  // Build raw clause and encode entire string including ()
-  const rawClause = `(${conditions.join(',')})`;
-  const encoded = encodeURIComponent(rawClause); // ✅ this preserves commas, encodes parentheses
-  console.log('🧠 Final encoded OR clause:', encoded);
+  const joined = conditions.join(','); // leave commas unencoded
+  const encoded = `%28${joined}%29`;   // encode ( as %28, ) as %29
+
+  console.log('✅ Final encoded OR clause:', encoded);
   return encoded;
 }
 
