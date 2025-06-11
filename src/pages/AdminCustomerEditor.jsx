@@ -1,32 +1,20 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
-// ✅ Encode only parentheses in `or=(...)`, not commas or wildcards
-function buildSafeOrClause(search) {
-  const trimmed = search.trim();
-  const isNumeric = /^\d+$/.test(trimmed);
-
-  const conditions = [
-    `CustomerName.ilike.*${trimmed}*`,
-    `EmailID.ilike.*${trimmed}*`,
-    `ContactNo.ilike.*${trimmed}*`,
-  ];
-
-  if (isNumeric) {
-    conditions.push(`CustomerID.eq.${trimmed}`);
-  }
-
-  const joined = conditions.join(',');
-  const encoded = `%28${joined}%29`; // only encode `(` = %28 and `)` = %29
-  console.log('✅ Encoded OR clause:', encoded);
-  return encoded;
-}
-
 export default function AdminCustomerEditor({ user }) {
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [formData, setFormData] = useState({});
+
+  useEffect(() => {
+    if (!user) return;
+
+    // 🔐 Log JWT admin flag and API key
+    console.log('👤 Logged in as:', user.email);
+    console.log('🔑 is_admin:', user.app_metadata?.is_admin);
+    console.log('🔑 API KEY present:', !!process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY);
+  }, [user]);
 
   useEffect(() => {
     if (search.trim().length < 2) {
@@ -35,39 +23,34 @@ export default function AdminCustomerEditor({ user }) {
     }
 
     const fetchSuggestions = async () => {
-      const encodedOr = buildSafeOrClause(search);
-      const supabaseUrl = process.env.REACT_APP_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY;
+      const trimmed = search.trim();
+      const isNumeric = /^\d+$/.test(trimmed);
 
-      const fullUrl = `${supabaseUrl}/rest/v1/customerinfo?select=CustomerID,CustomerName,EmailID,ContactNo&or=${encodedOr}&limit=10`;
+      let orClause = [
+        `CustomerName.ilike.*${trimmed}*`,
+        `EmailID.ilike.*${trimmed}*`,
+        `ContactNo.ilike.*${trimmed}*`,
+      ];
 
-      console.log('🔍 Searching for:', search);
-      console.log('🌐 Request URL:', fullUrl);
+      if (isNumeric) {
+        orClause.push(`CustomerID.eq.${trimmed}`);
+      }
 
-      try {
-        const response = await fetch(fullUrl, {
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-          },
-        });
+      const orString = orClause.join(',');
+      console.log('🔍 Autocomplete OR clause:', orString);
 
-        console.log('📥 Response status:', response.status);
-        const text = await response.text();
-        console.log('📦 Raw response body:', text);
+      const { data, error } = await supabase
+        .from('customerinfo')
+        .select('CustomerID, CustomerName, EmailID, ContactNo')
+        .or(`(${orString})`)
+        .limit(10);
 
-        if (!response.ok) {
-          console.error('❌ Bad request:', text);
-          setSuggestions([]);
-          return;
-        }
-
-        const data = JSON.parse(text);
-        console.log('✅ Suggestions received:', data.length);
-        setSuggestions(data);
-      } catch (err) {
-        console.error('💥 Fetch failed:', err.message);
+      if (error) {
+        console.error('❌ Autocomplete error:', error.message);
         setSuggestions([]);
+      } else {
+        console.log('✅ Suggestions:', data.length);
+        setSuggestions(data || []);
       }
     };
 
@@ -75,7 +58,6 @@ export default function AdminCustomerEditor({ user }) {
   }, [search]);
 
   const handleSelect = async (customerId) => {
-    console.log('📋 Load full record for ID:', customerId);
     const { data, error } = await supabase
       .from('customerinfo')
       .select('*')
@@ -83,7 +65,6 @@ export default function AdminCustomerEditor({ user }) {
       .single();
 
     if (!error) {
-      console.log('✅ Customer loaded:', data);
       setSelectedCustomer(data);
       setFormData(data);
       setSuggestions([]);
@@ -99,7 +80,6 @@ export default function AdminCustomerEditor({ user }) {
   };
 
   const handleSave = async () => {
-    console.log('💾 Saving customer data:', formData);
     const { error } = await supabase
       .from('customerinfo')
       .update(formData)
