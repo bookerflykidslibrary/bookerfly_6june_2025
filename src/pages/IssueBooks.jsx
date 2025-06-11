@@ -1,26 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import supabase from '../utils/supabaseClient';
 
 export default function IssueBooks() {
   const [bookInputs, setBookInputs] = useState(Array(10).fill({ value: '', type: 'ISBN13' }));
-  const [customerId, setCustomerId] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [books, setBooks] = useState([]);
   const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminLocation, setAdminLocation] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const scannerRef = useRef(null);
+  const html5QrCodeRef = useRef(null);
 
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
       const { data: admin } = await supabase
         .from('admininfo')
         .select('AdminLocation')
         .eq('AdminID', user.id)
         .single();
-
       if (admin) {
         setIsAdmin(true);
         setAdminLocation(admin.AdminLocation);
@@ -35,10 +37,48 @@ export default function IssueBooks() {
     setBookInputs(updated);
   };
 
+  const handleScannedISBN = (isbn) => {
+    const indexToFill = bookInputs.findIndex(entry => entry.value.trim() === '');
+    if (indexToFill !== -1) {
+      const updated = [...bookInputs];
+      updated[indexToFill] = { value: isbn, type: 'ISBN13' };
+      setBookInputs(updated);
+      setMessage(`✅ Scanned ISBN: ${isbn}`);
+    } else {
+      setMessage('All input boxes are full!');
+    }
+    stopScanner();
+  };
+
+  const startScanner = async () => {
+    setScanning(true);
+    html5QrCodeRef.current = new Html5Qrcode("scanner");
+    html5QrCodeRef.current.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      (decodedText) => {
+        handleScannedISBN(decodedText);
+      },
+      (error) => {}
+    );
+  };
+
+  const stopScanner = () => {
+    html5QrCodeRef.current?.stop().then(() => {
+      html5QrCodeRef.current.clear();
+      setScanning(false);
+    });
+  };
+
   const handleReview = async () => {
+    if (!selectedCustomer?.CustomerID) {
+      setMessage('Please select a customer.');
+      return;
+    }
+
     const filtered = bookInputs.filter(entry => entry.value.trim() !== '');
-    if (!customerId || filtered.length === 0) {
-      setMessage('Please enter Customer ID and at least one Book ID/ISBN.');
+    if (filtered.length === 0) {
+      setMessage('Please enter at least one Book ID or scan.');
       return;
     }
 
@@ -46,11 +86,11 @@ export default function IssueBooks() {
 
     for (let entry of filtered) {
       if (entry.type === 'ISBN13') {
-        // Get available unbooked copy
         const { data: copy } = await supabase
           .from('copyinfo')
-          .select('CopyID, ISBN13')
+          .select('CopyID, ISBN13, CopyNumber')
           .eq('ISBN13', entry.value)
+          .eq('CopyLocation', adminLocation)
           .eq('CopyBooked', false)
           .limit(1)
           .maybeSingle();
@@ -60,7 +100,6 @@ export default function IssueBooks() {
           continue;
         }
 
-        // Get book details
         const { data: book } = await supabase
           .from('catalog')
           .select('Title, Authors, ISBN13, Thumbnail')
@@ -68,18 +107,18 @@ export default function IssueBooks() {
           .single();
 
         if (book) {
-          allBooks.push({ ...book, CopyID: copy.CopyID });
+          allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
         }
 
       } else if (entry.type === 'CopyLocationID') {
         const { data: copy } = await supabase
           .from('copyinfo')
-          .select('CopyID, ISBN13, CopyBooked')
+          .select('CopyID, ISBN13, CopyBooked, CopyNumber')
           .eq('CopyLocationID', entry.value)
           .maybeSingle();
 
         if (!copy) {
-          allBooks.push({ error: `Invalid CopyLocationID ${entry.value}` });
+          allBooks.push({ error: `Invalid CopyLocationID: ${entry.value}` });
           continue;
         }
 
@@ -95,7 +134,7 @@ export default function IssueBooks() {
           .single();
 
         if (book) {
-          allBooks.push({ ...book, CopyID: copy.CopyID });
+          allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
         }
       }
     }
@@ -115,7 +154,7 @@ export default function IssueBooks() {
       CopyID: book.CopyID,
       BookingDate: today,
       ReturnDate: null,
-      MemberID: customerId,
+      MemberID: selectedCustomer.CustomerID,
       Comment: '',
     }));
 
@@ -124,18 +163,14 @@ export default function IssueBooks() {
     if (error) {
       setMessage('Error issuing books: ' + error.message);
     } else {
-      // Mark issued copies as booked
-      const copyIds = validBooks.map(b => b.CopyID);
       await supabase
         .from('copyinfo')
         .update({ CopyBooked: true })
-        .in('CopyID', copyIds);
-
+        .in('CopyID', validBooks.map(b => b.CopyID));
       setMessage('✅ Books issued successfully!');
       setConfirming(false);
       setBooks([]);
       setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
-      setCustomerId('');
     }
   };
 
@@ -147,12 +182,14 @@ export default function IssueBooks() {
     <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8">
       <h2 className="text-2xl font-bold text-center text-purple-700 mb-4">Issue Books</h2>
 
+      {/* Replace this with your actual customer search input */}
       <input
         type="text"
-        placeholder="Enter Customer ID"
-        value={customerId}
-        onChange={(e) => setCustomerId(e.target.value)}
-        className="w-full p-2 mb-4 border border-gray-300 rounded"
+        placeholder="Temporary CustomerID input"
+        className="w-full p-2 mb-2 border border-gray-300 rounded"
+        onChange={(e) =>
+          setSelectedCustomer({ CustomerID: e.target.value })
+        }
       />
 
       {bookInputs.map((entry, index) => (
@@ -176,6 +213,25 @@ export default function IssueBooks() {
       ))}
 
       <button
+        onClick={() => startScanner()}
+        className="w-full mb-2 bg-blue-600 text-white py-2 rounded"
+      >
+        📷 Scan ISBN
+      </button>
+
+      {scanning && (
+        <div className="mb-4">
+          <div id="scanner" className="w-full h-64 bg-gray-100 rounded" />
+          <button
+            onClick={stopScanner}
+            className="mt-2 text-sm text-red-600 underline"
+          >
+            Cancel Scan
+          </button>
+        </div>
+      )}
+
+      <button
         onClick={handleReview}
         className="w-full mt-2 bg-purple-600 text-white py-2 rounded"
       >
@@ -194,7 +250,7 @@ export default function IssueBooks() {
                 <div>
                   <p className="text-sm font-bold">{b.Title}</p>
                   <p className="text-xs text-gray-600">{b.Authors}</p>
-                  <p className="text-xs text-green-600">CopyID: {b.CopyID}</p>
+                  <p className="text-xs text-green-600">Copy number <strong>{b.CopyNumber}</strong> will be issued</p>
                 </div>
               </div>
             )
@@ -210,7 +266,9 @@ export default function IssueBooks() {
         </div>
       )}
 
-      {message && <p className="mt-4 text-center text-sm text-blue-700 font-semibold">{message}</p>}
+      {message && (
+        <p className="mt-4 text-center text-sm text-blue-700 font-semibold">{message}</p>
+      )}
     </div>
   );
 }

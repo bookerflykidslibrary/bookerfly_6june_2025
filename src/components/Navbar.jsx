@@ -13,9 +13,11 @@ export default function Navbar({ user }) {
         <Link to="/catalog">Catalog</Link>
         <Link to="/my-books">My Books</Link>
         <Link to="/recommendations">Recommendations</Link>
+      </div>
+      <div>
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/add-book">Add a Book</Link>}
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/issue-books">Issue Books</Link>}
-        {!user && <Link to="/signup" className="hover:underline">Sign Up</Link>}
+        {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/signup" className="hover:underline">Sign Up</Link>}
       </div>
 
       <div className="flex items-center space-x-4">
@@ -34,7 +36,7 @@ export default function Navbar({ user }) {
         ) : (
           <Link to="/login" className="hover:underline">Login</Link>
         )}
-        {user?.email === 'vkansal12@gmail.com' && <Link to="/signup" className="hover:underline">Sign Up</Link>}
+
       </div>
     </nav>
   )
