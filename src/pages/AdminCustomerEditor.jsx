@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
-// ✅ Use correct column names from your table
+// ✅ Encode only parentheses in `or=(...)`, not commas or wildcards
 function buildSafeOrClause(search) {
   const trimmed = search.trim();
   const isNumeric = /^\d+$/.test(trimmed);
@@ -16,9 +16,10 @@ function buildSafeOrClause(search) {
     conditions.push(`CustomerID.eq.${trimmed}`);
   }
 
-  const clause = `(${conditions.join(',')})`;
-  console.log('✅ Final raw OR clause (no encode):', clause);
-  return clause;
+  const joined = conditions.join(',');
+  const encoded = `%28${joined}%29`; // only encode `(` = %28 and `)` = %29
+  console.log('✅ Encoded OR clause:', encoded);
+  return encoded;
 }
 
 export default function AdminCustomerEditor({ user }) {
@@ -34,11 +35,11 @@ export default function AdminCustomerEditor({ user }) {
     }
 
     const fetchSuggestions = async () => {
-      const rawOrClause = buildSafeOrClause(search);
+      const encodedOr = buildSafeOrClause(search);
       const supabaseUrl = process.env.REACT_APP_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY;
 
-      const fullUrl = `${supabaseUrl}/rest/v1/customerinfo?select=CustomerID,CustomerName,EmailID,ContactNo&or=${rawOrClause}&limit=10`;
+      const fullUrl = `${supabaseUrl}/rest/v1/customerinfo?select=CustomerID,CustomerName,EmailID,ContactNo&or=${encodedOr}&limit=10`;
 
       console.log('🔍 Searching for:', search);
       console.log('🌐 Request URL:', fullUrl);
