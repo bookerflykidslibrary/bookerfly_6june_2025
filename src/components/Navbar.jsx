@@ -14,7 +14,7 @@ export default function Navbar({ user }) {
         <Link to="/my-books">My Books</Link>
         <Link to="/recommendations">Recommendations</Link>
       </div>
-      <div>
+      <div  className="space-x-4">
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/add-book">Add a Book</Link>}
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/issue-books">Issue Books</Link>}
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/signup" className="hover:underline">Sign Up</Link>}

@@ -11,7 +11,6 @@ export default function IssueBooks() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminLocation, setAdminLocation] = useState('');
   const [scanning, setScanning] = useState(false);
-  const scannerRef = useRef(null);
   const html5QrCodeRef = useRef(null);
 
   useEffect(() => {
@@ -45,12 +44,13 @@ export default function IssueBooks() {
       setBookInputs(updated);
       setMessage(`✅ Scanned ISBN: ${isbn}`);
     } else {
-      setMessage('All input boxes are full!');
+      setMessage('All input boxes are full! Stopping scanner.');
+      stopScanner();
     }
-    stopScanner();
   };
 
   const startScanner = async () => {
+    if (scanning) return;
     setScanning(true);
     html5QrCodeRef.current = new Html5Qrcode("scanner");
     html5QrCodeRef.current.start(
@@ -146,8 +146,8 @@ export default function IssueBooks() {
 
   const handleConfirm = async () => {
     const today = new Date().toISOString();
-
     const validBooks = books.filter(b => !b.error);
+
     const records = validBooks.map(book => ({
       LibraryBranch: adminLocation,
       ISBN13: book.ISBN13,
@@ -167,6 +167,7 @@ export default function IssueBooks() {
         .from('copyinfo')
         .update({ CopyBooked: true })
         .in('CopyID', validBooks.map(b => b.CopyID));
+
       setMessage('✅ Books issued successfully!');
       setConfirming(false);
       setBooks([]);
@@ -182,14 +183,12 @@ export default function IssueBooks() {
     <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8">
       <h2 className="text-2xl font-bold text-center text-purple-700 mb-4">Issue Books</h2>
 
-      {/* Replace this with your actual customer search input */}
+      {/* Temporary customer ID input */}
       <input
         type="text"
-        placeholder="Temporary CustomerID input"
-        className="w-full p-2 mb-2 border border-gray-300 rounded"
-        onChange={(e) =>
-          setSelectedCustomer({ CustomerID: e.target.value })
-        }
+        placeholder="Customer ID (temp)"
+        className="w-full p-2 mb-4 border border-gray-300 rounded"
+        onChange={(e) => setSelectedCustomer({ CustomerID: e.target.value })}
       />
 
       {bookInputs.map((entry, index) => (
@@ -213,10 +212,10 @@ export default function IssueBooks() {
       ))}
 
       <button
-        onClick={() => startScanner()}
+        onClick={startScanner}
         className="w-full mb-2 bg-blue-600 text-white py-2 rounded"
       >
-        📷 Scan ISBN
+        📷 Start Scanner
       </button>
 
       {scanning && (
@@ -226,7 +225,7 @@ export default function IssueBooks() {
             onClick={stopScanner}
             className="mt-2 text-sm text-red-600 underline"
           >
-            Cancel Scan
+            Stop Scanning
           </button>
         </div>
       )}
@@ -236,6 +235,16 @@ export default function IssueBooks() {
         className="w-full mt-2 bg-purple-600 text-white py-2 rounded"
       >
         Review Books
+      </button>
+
+      <button
+        onClick={() => {
+          setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
+          setMessage('');
+        }}
+        className="w-full mt-2 bg-gray-300 text-black py-2 rounded"
+      >
+        🔄 Reset Book Entries
       </button>
 
       {confirming && (
