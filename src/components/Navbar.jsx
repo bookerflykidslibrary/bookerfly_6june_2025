@@ -9,14 +9,14 @@ export default function Navbar({ user }) {
 
   return (
     <nav className="flex flex-col sm:flex-row justify-between items-center p-4 bg-blue-600 text-white space-y-2 sm:space-y-0">
-      <div className="space-x-4" className="hover:underline">
-        <Link to="/catalog">Catalog</Link>
+      <div className="space-x-4">
+        <Link to="/catalog" className="hover:underline">Catalog</Link>
       </div>
-      <div className="space-x-4" className="hover:underline">
-        <Link to="/my-books">My Books</Link>
+      <div className="space-x-4">
+        <Link to="/my-books" className="hover:underline">My Books</Link>
       </div>
-      <div className="space-x-4" className="hover:underline">
-        <Link to="/recommendations">Recommendations</Link>
+      <div className="space-x-4">
+        <Link to="/recommendations" className="hover:underline">Recommendations</Link>
       </div>
       <div  className="space-x-4">
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/add-book" className="hover:underline">Add a Book</Link>}

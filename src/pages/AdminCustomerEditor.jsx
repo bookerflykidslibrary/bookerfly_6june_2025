@@ -35,19 +35,20 @@ export default function AdminCustomerEditor({ user }) {
         orClause.push(`CustomerID.eq.${trimmed}`);
       }
 
-      console.log('🔍 Autocomplete OR clause:', orClause.join(','));
+      const finalOrClause = orClause.join(',');
+      console.log('🔍 Autocomplete OR clause (no wrapping):', finalOrClause);
 
       const { data, error } = await supabase
         .from('customerinfo')
         .select('CustomerID, CustomerName, EmailID, ContactNo')
-        .or(orClause.join(',')) // ✅ NO parentheses around .or()!
+        .or(finalOrClause) // ✅ NO extra parentheses
         .limit(10);
 
       if (error) {
         console.error('❌ Autocomplete error:', error.message);
         setSuggestions([]);
       } else {
-        console.log('✅ Suggestions:', data.length);
+        console.log('✅ Suggestions found:', data.length);
         setSuggestions(data || []);
       }
     };
