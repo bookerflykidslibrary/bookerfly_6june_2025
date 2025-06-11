@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import supabase from '../supabaseClient'
+import supabase from '../utils/supabaseClient'
 
 export default function SignupForm() {
   const [formData, setFormData] = useState({
