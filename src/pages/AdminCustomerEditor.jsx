@@ -9,10 +9,14 @@ export default function AdminCustomerEditor({ user }) {
   const [formData, setFormData] = useState({});
 
   useEffect(() => {
-    if (search.length < 2) return setSuggestions([]);
+    if (search.trim().length < 2) return setSuggestions([]);
 
     const fetchSuggestions = async () => {
-      const orClause = `Name.ilike.%${search}%,EmailID.ilike.%${search}%,MobileNumber.ilike.%${search}%,CustomerID.eq.${search}`;
+      const trimmed = search.trim();
+      const isNumeric = /^\d+$/.test(trimmed);
+      const orClause = isNumeric
+        ? `Name.ilike.*${trimmed}*,EmailID.ilike.*${trimmed}*,MobileNumber.ilike.*${trimmed}*,CustomerID.eq.${trimmed}`
+        : `Name.ilike.*${trimmed}*,EmailID.ilike.*${trimmed}*,MobileNumber.ilike.*${trimmed}*`;
 
       const { data, error } = await supabase
         .from('customerinfo')
@@ -21,9 +25,10 @@ export default function AdminCustomerEditor({ user }) {
         .limit(10);
 
       if (!error) {
-        setSuggestions(data);
+        setSuggestions(data || []);
       } else {
-        console.error('Suggestion fetch error:', error.message);
+        console.error('Autocomplete fetch error:', error.message);
+        setSuggestions([]);
       }
     };
 
@@ -76,8 +81,9 @@ export default function AdminCustomerEditor({ user }) {
         placeholder="Search by ID, Name, Email or Phone"
         className="border p-2 rounded w-full"
       />
+
       {suggestions.length > 0 && (
-        <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded">
+        <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded z-10 relative">
           {suggestions.map(c => (
             <li
               key={c.CustomerID}
