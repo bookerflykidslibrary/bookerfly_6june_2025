@@ -11,6 +11,7 @@ import Recommendations from './pages/Recommendations';
 import AdminAddBook from './pages/AdminAddBook';
 import IssueBooks from './pages/IssueBooks';
 import SignupForm from './components/SignupForm'
+import AdminCustomerEditor from './pages/AdminCustomerEditor';
 
 const supabase = createClient(
   process.env.REACT_APP_PUBLIC_SUPABASE_URL,
@@ -64,6 +65,7 @@ function AppRoutes() {
         <Route path="/admin/add-book" element={<AdminAddBook user={user} />} />
         <Route path="/admin/issue-books" element={<IssueBooks user={user} />} />
         <Route path="/admin/signup" element={<SignupForm />} />
+        <Route path="/admin/edit-customer" element={<AdminCustomerEditor user={user} />} />
       </Routes>
     </>
   );

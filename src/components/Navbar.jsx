@@ -19,6 +19,9 @@ export default function Navbar({ user }) {
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/issue-books">Issue Books</Link>}
         {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/signup" className="hover:underline">Sign Up</Link>}
       </div>
+      <div  className="space-x-4">
+        {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/edit-customer">View Customer</Link>}
+      </div>
 
       <div className="flex items-center space-x-4">
         {user && (
