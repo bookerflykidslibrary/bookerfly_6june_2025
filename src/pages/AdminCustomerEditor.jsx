@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
+// ✅ Helper to build correctly encoded OR clause
 function buildSafeOrClause(search) {
   const trimmed = search.trim();
   const isNumeric = /^\d+$/.test(trimmed);
@@ -15,9 +16,11 @@ function buildSafeOrClause(search) {
     conditions.push(`CustomerID.eq.${trimmed}`);
   }
 
-  const clause = `(${conditions.join(',')})`;
-  console.log('🧠 Unencoded OR clause:', clause);
-  return encodeURIComponent(clause);
+  // Build raw clause and encode entire string including ()
+  const rawClause = `(${conditions.join(',')})`;
+  const encoded = encodeURIComponent(rawClause); // ✅ this preserves commas, encodes parentheses
+  console.log('🧠 Final encoded OR clause:', encoded);
+  return encoded;
 }
 
 export default function AdminCustomerEditor({ user }) {
@@ -33,17 +36,14 @@ export default function AdminCustomerEditor({ user }) {
     }
 
     const fetchSuggestions = async () => {
-      console.log('🔎 Starting search for:', search);
       const encodedOr = buildSafeOrClause(search);
       const supabaseUrl = process.env.REACT_APP_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY;
 
-      console.log('🔐 Supabase URL:', supabaseUrl);
-      console.log('🔐 Supabase KEY present:', !!supabaseKey);
-
       const fullUrl = `${supabaseUrl}/rest/v1/customerinfo?select=CustomerID,Name,EmailID,MobileNumber&or=${encodedOr}&limit=10`;
 
-      console.log('🌐 Full request URL:', fullUrl);
+      console.log('🔍 Searching for:', search);
+      console.log('🌐 Request URL:', fullUrl);
 
       try {
         const response = await fetch(fullUrl, {
@@ -54,21 +54,20 @@ export default function AdminCustomerEditor({ user }) {
         });
 
         console.log('📥 Response status:', response.status);
-
         const text = await response.text();
         console.log('📦 Raw response body:', text);
 
         if (!response.ok) {
-          console.error('❌ Failed to fetch suggestions:', text);
+          console.error('❌ Bad request:', text);
           setSuggestions([]);
           return;
         }
 
         const data = JSON.parse(text);
-        console.log('✅ Parsed suggestions:', data.length, 'items');
+        console.log('✅ Suggestions received:', data.length);
         setSuggestions(data);
       } catch (err) {
-        console.error('💥 Fetch exception:', err.message);
+        console.error('💥 Fetch failed:', err.message);
         setSuggestions([]);
       }
     };
@@ -77,7 +76,7 @@ export default function AdminCustomerEditor({ user }) {
   }, [search]);
 
   const handleSelect = async (customerId) => {
-    console.log('📋 Loading full customer info for ID:', customerId);
+    console.log('📋 Load full record for ID:', customerId);
     const { data, error } = await supabase
       .from('customerinfo')
       .select('*')
@@ -85,13 +84,13 @@ export default function AdminCustomerEditor({ user }) {
       .single();
 
     if (!error) {
-      console.log('✅ Loaded customer:', data);
+      console.log('✅ Customer loaded:', data);
       setSelectedCustomer(data);
       setFormData(data);
       setSuggestions([]);
       setSearch('');
     } else {
-      console.error('❌ Could not load customer:', error.message);
+      console.error('❌ Failed to load customer:', error.message);
       alert('Customer not found');
     }
   };
@@ -101,15 +100,16 @@ export default function AdminCustomerEditor({ user }) {
   };
 
   const handleSave = async () => {
-    console.log('💾 Saving updated data:', formData);
+    console.log('💾 Saving customer data:', formData);
     const { error } = await supabase
       .from('customerinfo')
       .update(formData)
       .eq('CustomerID', formData.CustomerID);
 
-    if (!error) alert('✅ Customer updated successfully!');
-    else {
-      console.error('❌ Save failed:', error.message);
+    if (!error) {
+      alert('✅ Customer updated successfully!');
+    } else {
+      console.error('❌ Update failed:', error.message);
       alert('Failed to update.');
     }
   };
