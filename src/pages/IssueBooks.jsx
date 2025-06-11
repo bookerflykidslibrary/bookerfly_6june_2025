@@ -52,15 +52,39 @@ export default function IssueBooks() {
   const startScanner = async () => {
     if (scanning) return;
     setScanning(true);
-    html5QrCodeRef.current = new Html5Qrcode("scanner");
-    html5QrCodeRef.current.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      (decodedText) => {
-        handleScannedISBN(decodedText);
-      },
-      (error) => {}
-    );
+
+    setTimeout(() => {
+      const scannerElement = document.getElementById("scanner");
+      if (!scannerElement) {
+        setMessage("❌ Scanner div not found.");
+        setScanning(false);
+        return;
+      }
+
+      try {
+        html5QrCodeRef.current = new Html5Qrcode("scanner");
+        html5QrCodeRef.current
+          .start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: 250 },
+            (decodedText) => {
+              handleScannedISBN(decodedText);
+            },
+            (error) => {
+              // silent error
+            }
+          )
+          .catch((err) => {
+            console.error("Scanner init error:", err);
+            setMessage("❌ Error starting scanner: " + err);
+            setScanning(false);
+          });
+      } catch (e) {
+        console.error("Scanner exception:", e);
+        setMessage("❌ Scanner initialization failed.");
+        setScanning(false);
+      }
+    }, 300);
   };
 
   const stopScanner = () => {
@@ -220,12 +244,16 @@ export default function IssueBooks() {
 
       {scanning && (
         <div className="mb-4">
-          <div id="scanner" className="w-full h-64 bg-gray-100 rounded" />
+          <div
+            id="scanner"
+            style={{ width: '100%', height: '300px', backgroundColor: '#f3f4f6' }}
+            className="rounded border border-gray-300"
+          />
           <button
             onClick={stopScanner}
             className="mt-2 text-sm text-red-600 underline"
           >
-            Stop Scanning
+            ⛔ Stop Scanning
           </button>
         </div>
       )}
