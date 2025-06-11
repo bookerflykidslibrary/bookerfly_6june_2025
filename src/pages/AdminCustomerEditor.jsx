@@ -1,4 +1,3 @@
-// /src/pages/AdminCustomerEditor.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
@@ -9,25 +8,36 @@ export default function AdminCustomerEditor({ user }) {
   const [formData, setFormData] = useState({});
 
   useEffect(() => {
-    if (search.trim().length < 2) return setSuggestions([]);
+    if (search.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
 
     const fetchSuggestions = async () => {
-      const trimmed = search.trim();
-      const isNumeric = /^\d+$/.test(trimmed);
-      const orClause = isNumeric
-        ? `Name.ilike.*${trimmed}*,EmailID.ilike.*${trimmed}*,MobileNumber.ilike.*${trimmed}*,CustomerID.eq.${trimmed}`
-        : `Name.ilike.*${trimmed}*,EmailID.ilike.*${trimmed}*,MobileNumber.ilike.*${trimmed}*`;
+      const s = search.trim();
+      const isNumeric = /^\d+$/.test(s);
+      const textMatchClause = `(Name.ilike.*${s}*,EmailID.ilike.*${s}*,MobileNumber.ilike.*${s}*)`;
+      const fullClause = isNumeric
+        ? `(${textMatchClause},CustomerID.eq.${s})`
+        : textMatchClause;
 
-      const { data, error } = await supabase
-        .from('customerinfo')
-        .select('CustomerID, Name, EmailID, MobileNumber')
-        .or(orClause)
-        .limit(10);
+      const encoded = encodeURIComponent(fullClause);
 
-      if (!error) {
-        setSuggestions(data || []);
+      const response = await fetch(
+        `https://sawufgyypmprtnuwvgnd.supabase.co/rest/v1/customerinfo?select=CustomerID,Name,EmailID,MobileNumber&or=${encoded}&limit=10`,
+        {
+          headers: {
+            apikey: process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setSuggestions(data);
       } else {
-        console.error('Autocomplete fetch error:', error.message);
+        console.error('Fetch failed', await response.text());
         setSuggestions([]);
       }
     };
