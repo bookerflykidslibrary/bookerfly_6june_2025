@@ -1,6 +1,23 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
+function buildSafeOrClause(search) {
+  const trimmed = search.trim();
+  const isNumeric = /^\d+$/.test(trimmed);
+
+  const conditions = [
+    `Name.ilike.*${trimmed}*`,
+    `EmailID.ilike.*${trimmed}*`,
+    `MobileNumber.ilike.*${trimmed}*`,
+  ];
+
+  if (isNumeric) {
+    conditions.push(`CustomerID.eq.${trimmed}`);
+  }
+
+  return encodeURIComponent(`(${conditions.join(',')})`);
+}
+
 export default function AdminCustomerEditor({ user }) {
   const [search, setSearch] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -14,32 +31,27 @@ export default function AdminCustomerEditor({ user }) {
     }
 
     const fetchSuggestions = async () => {
-      const s = search.trim();
-      const isNumeric = /^\d+$/.test(s);
-      const textMatchClause = `(Name.ilike.*${s}*,EmailID.ilike.*${s}*,MobileNumber.ilike.*${s}*)`;
-      const fullClause = isNumeric
-        ? `(${textMatchClause},CustomerID.eq.${s})`
-        : textMatchClause;
+      const orEncoded = buildSafeOrClause(search);
+      const url = `https://sawufgyypmprtnuwvgnd.supabase.co/rest/v1/customerinfo?select=CustomerID,Name,EmailID,MobileNumber&or=${orEncoded}&limit=10`;
 
-      const encoded = encodeURIComponent(fullClause);
+      console.log('🔍 Fetching:', url);
 
-      const response = await fetch(
-        `https://sawufgyypmprtnuwvgnd.supabase.co/rest/v1/customerinfo?select=CustomerID,Name,EmailID,MobileNumber&or=${encoded}&limit=10`,
-        {
-          headers: {
-            apikey: process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY}`,
-          },
-        }
-      );
+      const response = await fetch(url, {
+        headers: {
+          apikey: process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY}`,
+        },
+      });
 
-      if (response.ok) {
-        const data = await response.json();
-        setSuggestions(data);
-      } else {
-        console.error('Fetch failed', await response.text());
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Bad request:', errorText);
         setSuggestions([]);
+        return;
       }
+
+      const data = await response.json();
+      setSuggestions(data);
     };
 
     fetchSuggestions();
@@ -63,7 +75,7 @@ export default function AdminCustomerEditor({ user }) {
   };
 
   const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSave = async () => {
@@ -72,8 +84,8 @@ export default function AdminCustomerEditor({ user }) {
       .update(formData)
       .eq('CustomerID', formData.CustomerID);
 
-    if (!error) alert('Customer updated successfully!');
-    else alert('Failed to update.');
+    if (!error) alert('✅ Customer updated successfully!');
+    else alert('❌ Failed to update.');
   };
 
   if (user?.email !== 'vkansal12@gmail.com') {
@@ -87,14 +99,14 @@ export default function AdminCustomerEditor({ user }) {
       <input
         type="text"
         value={search}
-        onChange={e => setSearch(e.target.value)}
+        onChange={(e) => setSearch(e.target.value)}
         placeholder="Search by ID, Name, Email or Phone"
         className="border p-2 rounded w-full"
       />
 
       {suggestions.length > 0 && (
         <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded z-10 relative">
-          {suggestions.map(c => (
+          {suggestions.map((c) => (
             <li
               key={c.CustomerID}
               onClick={() => handleSelect(c.CustomerID)}
