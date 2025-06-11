@@ -27,7 +27,7 @@ export default function Navbar() {
         ) : (
           <Link to="/login">Login</Link>
         )}
-        {user?.email === 'vkansal12@gmail.com' && <Link to="/signup" className="hover:underline">Sign Up</Link>
+        {user?.email === 'vkansal12@gmail.com' && <Link to="/signup" className="hover:underline">Sign Up</Link>}
       </div>
     </nav>
   )
