@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
-// ✅ Build raw, unencoded OR clause
+// ✅ Use correct column names from your table
 function buildSafeOrClause(search) {
   const trimmed = search.trim();
   const isNumeric = /^\d+$/.test(trimmed);
 
   const conditions = [
-    `Name.ilike.*${trimmed}*`,
+    `CustomerName.ilike.*${trimmed}*`,
     `EmailID.ilike.*${trimmed}*`,
-    `MobileNumber.ilike.*${trimmed}*`,
+    `ContactNo.ilike.*${trimmed}*`,
   ];
 
   if (isNumeric) {
@@ -18,7 +18,7 @@ function buildSafeOrClause(search) {
 
   const clause = `(${conditions.join(',')})`;
   console.log('✅ Final raw OR clause (no encode):', clause);
-  return clause; // DO NOT encode
+  return clause;
 }
 
 export default function AdminCustomerEditor({ user }) {
@@ -38,7 +38,7 @@ export default function AdminCustomerEditor({ user }) {
       const supabaseUrl = process.env.REACT_APP_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY;
 
-      const fullUrl = `${supabaseUrl}/rest/v1/customerinfo?select=CustomerID,Name,EmailID,MobileNumber&or=${rawOrClause}&limit=10`;
+      const fullUrl = `${supabaseUrl}/rest/v1/customerinfo?select=CustomerID,CustomerName,EmailID,ContactNo&or=${rawOrClause}&limit=10`;
 
       console.log('🔍 Searching for:', search);
       console.log('🌐 Request URL:', fullUrl);
@@ -112,7 +112,7 @@ export default function AdminCustomerEditor({ user }) {
     }
   };
 
-  if (user?.email !== 'vkansal12@gmail.com') {
+  if (!user?.app_metadata?.is_admin) {
     return <div className="p-4 text-red-600">Access Denied</div>;
   }
 
@@ -136,7 +136,7 @@ export default function AdminCustomerEditor({ user }) {
               onClick={() => handleSelect(c.CustomerID)}
               className="p-2 hover:bg-blue-100 cursor-pointer"
             >
-              #{c.CustomerID} — {c.Name}, {c.EmailID}, {c.MobileNumber}
+              #{c.CustomerID} — {c.CustomerName}, {c.EmailID}, {c.ContactNo}
             </li>
           ))}
         </ul>
