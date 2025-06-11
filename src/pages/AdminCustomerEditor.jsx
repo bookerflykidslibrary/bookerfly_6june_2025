@@ -10,7 +10,6 @@ export default function AdminCustomerEditor({ user }) {
   useEffect(() => {
     if (!user) return;
 
-    // 🔐 Log JWT admin flag and API key
     console.log('👤 Logged in as:', user.email);
     console.log('🔑 is_admin:', user.app_metadata?.is_admin);
     console.log('🔑 API KEY present:', !!process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY);
@@ -26,7 +25,7 @@ export default function AdminCustomerEditor({ user }) {
       const trimmed = search.trim();
       const isNumeric = /^\d+$/.test(trimmed);
 
-      let orClause = [
+      const orClause = [
         `CustomerName.ilike.*${trimmed}*`,
         `EmailID.ilike.*${trimmed}*`,
         `ContactNo.ilike.*${trimmed}*`,
@@ -36,13 +35,12 @@ export default function AdminCustomerEditor({ user }) {
         orClause.push(`CustomerID.eq.${trimmed}`);
       }
 
-      const orString = orClause.join(',');
-      console.log('🔍 Autocomplete OR clause:', orString);
+      console.log('🔍 Autocomplete OR clause:', orClause.join(','));
 
       const { data, error } = await supabase
         .from('customerinfo')
         .select('CustomerID, CustomerName, EmailID, ContactNo')
-        .or(`(${orString})`)
+        .or(orClause.join(',')) // ✅ NO parentheses around .or()!
         .limit(10);
 
       if (error) {
@@ -65,6 +63,7 @@ export default function AdminCustomerEditor({ user }) {
       .single();
 
     if (!error) {
+      console.log('✅ Customer loaded:', data);
       setSelectedCustomer(data);
       setFormData(data);
       setSuggestions([]);
