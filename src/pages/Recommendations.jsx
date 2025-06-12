@@ -77,10 +77,7 @@ export default function AdminAddBook() {
       }
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { data: { user } } = await supabase.auth.getUser();
     const { data: admin } = await supabase
       .from('admininfo')
       .select('AdminLocation')
@@ -99,41 +96,186 @@ export default function AdminAddBook() {
     setCopyNumber((existingCopies?.length || 0) + 1);
   };
 
+  const handleTagChange = (tag) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const handleThumbnailUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setThumbnailFile(file);
+      setThumbnailPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleSubmit = async () => {
+    const thumbnailUrl = book.Thumbnail;
+
+    const { data: catalogExists } = await supabase
+      .from('catalog')
+      .select('*')
+      .eq('ISBN13', book.ISBN13)
+      .single();
+
+    if (!catalogExists) {
+      const { error: insertError } = await supabase.from('catalog').insert([
+        {
+          ISBN13: book.ISBN13,
+          Title: book.Title,
+          Authors: book.Authors,
+          Description: book.Description,
+          Thumbnail: thumbnailUrl,
+          MinAge: book.MinAge,
+          MaxAge: book.MaxAge,
+          Reviews: book.Reviews,
+        },
+      ]);
+
+      if (insertError) {
+        setMessage('❌ Failed to add catalog.');
+        return;
+      }
+    }
+
+    await supabase.from('copyinfo').insert([
+      {
+        ISBN13: book.ISBN13,
+        CopyNumber: copyNumber,
+        CopyLocation: location,
+        CopyLocationID: copyLocationID,
+        BuyPrice: buyPrice,
+        AskPrice: askPrice,
+      },
+    ]);
+
+    setMessage('✅ Book added successfully!');
+  };
+
   return (
-    <div className="p-4 max-w-2xl mx-auto">
+    <div className="p-4 max-w-xl mx-auto">
       <h1 className="text-xl font-bold mb-4">Admin: Add Book</h1>
 
       <input
         type="text"
         value={isbn}
         onChange={(e) => setIsbn(e.target.value)}
-        placeholder="Enter ISBN13"
+        placeholder="Enter ISBN"
         className="border p-2 rounded w-full mb-2"
       />
       <button
         onClick={handleSearch}
-        className="bg-blue-600 text-white px-4 py-2 rounded mb-4 hover:bg-blue-700"
+        className="bg-blue-600 text-white w-full p-2 rounded hover:bg-blue-700 mb-4"
       >
-        Search Book
+        Search
       </button>
 
-      {message && <div className="text-red-600 mb-2">{message}</div>}
-
       {book && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold">Title</label>
-            <input
-              type="text"
-              value={book.Title}
-              onChange={(e) => setBook({ ...book, Title: e.target.value })}
-              className="w-full border px-2 py-1 rounded"
-            />
+        <>
+          <input className="w-full border p-2 mb-2" value={book.ISBN13} disabled />
+          <input
+            className="w-full border p-2 mb-2"
+            value={book.Title}
+            onChange={(e) => setBook({ ...book, Title: e.target.value })}
+          />
+          <input
+            className="w-full border p-2 mb-2"
+            value={book.Authors}
+            onChange={(e) => setBook({ ...book, Authors: e.target.value })}
+          />
+          <input
+            className="w-full border p-2 mb-2"
+            value={book.MinAge}
+            placeholder="Min Age"
+            onChange={(e) => setBook({ ...book, MinAge: e.target.value })}
+          />
+          <input
+            className="w-full border p-2 mb-2"
+            value={book.MaxAge}
+            placeholder="Max Age"
+            onChange={(e) => setBook({ ...book, MaxAge: e.target.value })}
+          />
+          <input
+            className="w-full border p-2 mb-2"
+            value={book.Reviews}
+            placeholder="Reviews"
+            onChange={(e) => setBook({ ...book, Reviews: e.target.value })}
+          />
+          <textarea
+            className="w-full border p-2 mb-2"
+            value={book.Description}
+            rows={5}
+            onChange={(e) => setBook({ ...book, Description: e.target.value })}
+          />
+
+          {book.Thumbnail && (
+            <img src={book.Thumbnail} alt="Book Thumbnail" className="w-32 mb-2" />
+          )}
+
+          <input
+            type="file"
+            onChange={handleThumbnailUpload}
+            className="mb-4"
+          />
+
+          <label>Location</label>
+          <select
+            className="w-full border p-2 mb-2"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          >
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.name}>{loc.name}</option>
+            ))}
+          </select>
+
+          <input
+            className="w-full border p-2 mb-2"
+            placeholder="Enter Copy Location ID"
+            value={copyLocationID}
+            onChange={(e) => setCopyLocationID(e.target.value)}
+          />
+          <input
+            className="w-full border p-2 mb-2"
+            placeholder="Enter Buy Price"
+            value={buyPrice}
+            onChange={(e) => setBuyPrice(e.target.value)}
+          />
+          <input
+            className="w-full border p-2 mb-2"
+            placeholder="Enter Ask Price"
+            value={askPrice}
+            onChange={(e) => setAskPrice(e.target.value)}
+          />
+
+          <div className="mb-2">
+            <p className="font-semibold">Tags:</p>
+            {tags.map((tag) => (
+              <label key={tag.id} className="block">
+                <input
+                  type="checkbox"
+                  checked={selectedTags.includes(tag.name)}
+                  onChange={() => handleTagChange(tag.name)}
+                />
+                {' '}
+                {tag.name}
+              </label>
+            ))}
           </div>
 
-          {/* Add more input fields as needed */}
-        </div>
+          <p className="mb-4">Next Copy Number: <strong>{copyNumber}</strong></p>
+
+          <button
+            onClick={handleSubmit}
+            className="w-full bg-green-600 text-white p-2 rounded hover:bg-green-700"
+          >
+            Confirm & Add Book
+          </button>
+        </>
       )}
+
+      {message && <div className="mt-4 text-center text-blue-700">{message}</div>}
     </div>
   );
 }
