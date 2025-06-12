@@ -59,7 +59,6 @@ export default function AdminAddBook() {
           MinAge: '',
           MaxAge: '',
           Reviews: '',
-          Tags: [],
         });
       } else {
         setBook({
@@ -71,7 +70,6 @@ export default function AdminAddBook() {
           MinAge: '',
           MaxAge: '',
           Reviews: '',
-          Tags: [],
         });
         setMessage('Google Books data not found. Please fill the form manually.');
       }
@@ -110,8 +108,30 @@ export default function AdminAddBook() {
     }
   };
 
+  const uploadThumbnailToStorage = async () => {
+    if (!thumbnailFile) return book?.Thumbnail || '';
+
+    const fileExt = thumbnailFile.name.split('.').pop();
+    const filePath = `${isbn}_${Date.now()}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage
+      .from('book-thumbnails')
+      .upload(filePath, thumbnailFile, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('Thumbnail upload failed:', uploadError.message);
+      return '';
+    }
+
+    const { data } = supabase.storage.from('book-thumbnails').getPublicUrl(filePath);
+    return data?.publicUrl || '';
+  };
+
   const handleSubmit = async () => {
-    const thumbnailUrl = book.Thumbnail;
+    const uploadedThumbnailUrl = await uploadThumbnailToStorage();
+    const catalogThumbnail = uploadedThumbnailUrl || book.Thumbnail;
 
     const { data: catalogExists } = await supabase
       .from('catalog')
@@ -126,7 +146,7 @@ export default function AdminAddBook() {
           Title: book.Title,
           Authors: book.Authors,
           Description: book.Description,
-          Thumbnail: thumbnailUrl,
+          Thumbnail: catalogThumbnail,
           MinAge: book.MinAge,
           MaxAge: book.MaxAge,
           Reviews: book.Reviews,
@@ -134,7 +154,7 @@ export default function AdminAddBook() {
       ]);
 
       if (insertError) {
-        setMessage('❌ Failed to add catalog.');
+        setMessage('❌ Failed to add book to catalog.');
         return;
       }
     }
@@ -150,7 +170,7 @@ export default function AdminAddBook() {
       },
     ]);
 
-    setMessage('✅ Book added successfully!');
+    setMessage('✅ Book and copy added successfully!');
   };
 
   return (
@@ -186,20 +206,20 @@ export default function AdminAddBook() {
           />
           <input
             className="w-full border p-2 mb-2"
-            value={book.MinAge}
             placeholder="Min Age"
+            value={book.MinAge}
             onChange={(e) => setBook({ ...book, MinAge: e.target.value })}
           />
           <input
             className="w-full border p-2 mb-2"
-            value={book.MaxAge}
             placeholder="Max Age"
+            value={book.MaxAge}
             onChange={(e) => setBook({ ...book, MaxAge: e.target.value })}
           />
           <input
             className="w-full border p-2 mb-2"
-            value={book.Reviews}
             placeholder="Reviews"
+            value={book.Reviews}
             onChange={(e) => setBook({ ...book, Reviews: e.target.value })}
           />
           <textarea
@@ -209,15 +229,13 @@ export default function AdminAddBook() {
             onChange={(e) => setBook({ ...book, Description: e.target.value })}
           />
 
-          {book.Thumbnail && (
-            <img src={book.Thumbnail} alt="Book Thumbnail" className="w-32 mb-2" />
-          )}
+          {thumbnailPreview ? (
+            <img src={thumbnailPreview} alt="Thumbnail Preview" className="w-32 mb-2" />
+          ) : book.Thumbnail ? (
+            <img src={book.Thumbnail} alt="Thumbnail" className="w-32 mb-2" />
+          ) : null}
 
-          <input
-            type="file"
-            onChange={handleThumbnailUpload}
-            className="mb-4"
-          />
+          <input type="file" onChange={handleThumbnailUpload} className="mb-4" />
 
           <label>Location</label>
           <select
@@ -226,7 +244,9 @@ export default function AdminAddBook() {
             onChange={(e) => setLocation(e.target.value)}
           >
             {locations.map((loc) => (
-              <option key={loc.id} value={loc.name}>{loc.name}</option>
+              <option key={loc.id} value={loc.name}>
+                {loc.name}
+              </option>
             ))}
           </select>
 
@@ -257,8 +277,7 @@ export default function AdminAddBook() {
                   type="checkbox"
                   checked={selectedTags.includes(tag.name)}
                   onChange={() => handleTagChange(tag.name)}
-                />
-                {' '}
+                />{' '}
                 {tag.name}
               </label>
             ))}
