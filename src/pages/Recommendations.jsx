@@ -21,7 +21,7 @@ export default function AdminCustomerEditor({ user }) {
     const fetchDefaultCustomers = async () => {
       const { data, error } = await supabase
         .from('customerinfo')
-        .select('CustomerID, CustomerName, Membership, MembershipEndDate')
+        .select('CustomerID, CustomerName, StartDate, EndDate')
         .order('CustomerID', { ascending: true })
         .limit(20);
 
