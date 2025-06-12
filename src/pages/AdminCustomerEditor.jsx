@@ -6,6 +6,7 @@ export default function AdminCustomerEditor({ user }) {
   const [suggestions, setSuggestions] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [formData, setFormData] = useState({});
+  const [defaultCustomers, setDefaultCustomers] = useState([]);
 
   useEffect(() => {
     if (!user) return;
@@ -16,6 +17,22 @@ export default function AdminCustomerEditor({ user }) {
   }, [user]);
 
   useEffect(() => {
+    // Fetch default customers for summary
+    const fetchDefaultCustomers = async () => {
+      const { data, error } = await supabase
+        .from('customerinfo')
+        .select('CustomerID, CustomerName, StartDate, EndDate')
+        .order('CustomerID', { ascending: true })
+        .limit(20);
+
+      if (!error) setDefaultCustomers(data || []);
+      else console.error('❌ Default customer fetch error:', error.message);
+    };
+
+    fetchDefaultCustomers();
+  }, []);
+
+  useEffect(() => {
     if (search.trim().length < 2) {
       setSuggestions([]);
       return;
@@ -24,14 +41,10 @@ export default function AdminCustomerEditor({ user }) {
     const fetchSuggestions = async () => {
       const trimmed = search.trim();
       const isNumeric = /^\d+$/.test(trimmed);
-
-      // Only search text fields with ilike
       const orClause = [
         `CustomerName.ilike.*${trimmed}*`,
         `EmailID.ilike.*${trimmed}*`,
       ];
-
-      console.log('🔍 Text match OR clause:', orClause.join(','));
 
       let { data, error } = await supabase
         .from('customerinfo')
@@ -39,7 +52,6 @@ export default function AdminCustomerEditor({ user }) {
         .or(orClause.join(','))
         .limit(10);
 
-      // Extra matches if numeric input: CustomerID or ContactNo
       if (isNumeric) {
         const { data: idData, error: idError } = await supabase
           .from('customerinfo')
@@ -58,7 +70,6 @@ export default function AdminCustomerEditor({ user }) {
         console.error('❌ Autocomplete error:', error.message);
         setSuggestions([]);
       } else {
-        console.log('✅ Suggestions:', data?.length || 0);
         setSuggestions(data || []);
       }
     };
@@ -74,7 +85,6 @@ export default function AdminCustomerEditor({ user }) {
       .single();
 
     if (!error) {
-      console.log('✅ Customer loaded:', data);
       setSelectedCustomer(data);
       setFormData(data);
       setSuggestions([]);
@@ -146,13 +156,38 @@ export default function AdminCustomerEditor({ user }) {
               />
             </div>
           ))}
-
           <button
             onClick={handleSave}
             className="mt-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
           >
             Confirm Update
           </button>
+        </div>
+      )}
+
+      {search.trim() === '' && (
+        <div className="mt-10 border-t pt-4">
+          <h2 className="text-lg font-semibold mb-2">📋 Default Customer Summary</h2>
+          <table className="w-full border text-sm">
+            <thead>
+              <tr className="bg-gray-200">
+                <th className="border px-2 py-1">Customer ID</th>
+                <th className="border px-2 py-1">Name</th>
+                <th className="border px-2 py-1">Start Date</th>
+                <th className="border px-2 py-1">End Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {defaultCustomers.map((cust) => (
+                <tr key={cust.CustomerID} className="hover:bg-gray-100">
+                  <td className="border px-2 py-1">{cust.CustomerID}</td>
+                  <td className="border px-2 py-1">{cust.CustomerName}</td>
+                  <td className="border px-2 py-1">{cust.StartDate}</td>
+                  <td className="border px-2 py-1">{cust.EndDate}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
