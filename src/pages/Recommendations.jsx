@@ -182,8 +182,8 @@ export default function AdminCustomerEditor({ user }) {
                 <tr key={cust.CustomerID} className="hover:bg-gray-100">
                   <td className="border px-2 py-1">{cust.CustomerID}</td>
                   <td className="border px-2 py-1">{cust.CustomerName}</td>
-                  <td className="border px-2 py-1">{cust.Membership}</td>
-                  <td className="border px-2 py-1">{cust.MembershipEndDate}</td>
+                  <td className="border px-2 py-1">{cust.StartDate}</td>
+                  <td className="border px-2 py-1">{cust.EndDate}</td>
                 </tr>
               ))}
             </tbody>
