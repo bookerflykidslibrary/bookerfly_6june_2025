@@ -11,11 +11,11 @@ export default function AdminAddBook() {
   const [locations, setLocations] = useState([]);
   const [location, setLocation] = useState('');
   const [copyNumber, setCopyNumber] = useState(1);
-  const [copyLocationID, setCopyLocationID] = useState('');
   const [buyPrice, setBuyPrice] = useState('');
   const [askPrice, setAskPrice] = useState('');
   const [message, setMessage] = useState('');
 
+  // Fetch tags and locations on mount
   useEffect(() => {
     const fetchTagsAndLocations = async () => {
       const { data: tagList } = await supabase.from('tags').select('*');
@@ -27,35 +27,38 @@ export default function AdminAddBook() {
     fetchTagsAndLocations();
   }, []);
 
+  // Clean up thumbnail preview
   useEffect(() => {
     return () => {
-      if (thumbnailPreview) {
-        URL.revokeObjectURL(thumbnailPreview);
-      }
+      if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
     };
   }, [thumbnailPreview]);
 
-  const fetchFromGoogleBooks = async (isbn) => {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-    const json = await res.json();
-    return json.items?.[0]?.volumeInfo;
-  };
-
+  // Fetch book info from Supabase Edge Function
   const handleSearch = async () => {
     setMessage('');
-    const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
+    try {
+      const response = await fetch(
+        'https://sawufgyypmprtnuwvgnd.supabase.co/functions/v1/get-catalog-by-isbn-ts',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.REACT_APP_PUBLIC_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({ isbn })
+        }
+      );
 
-    if (catalogData) {
-      setBook(catalogData);
-    } else {
-      const info = await fetchFromGoogleBooks(isbn);
-      if (info) {
+      const result = await response.json();
+
+      if (response.ok && result) {
         setBook({
           ISBN13: isbn,
-          Title: info.title || '',
-          Authors: info.authors?.join(', ') || '',
-          Description: info.description || '',
-          Thumbnail: info.imageLinks?.thumbnail || '',
+          Title: result.title || '',
+          Authors: result.authors?.join(', ') || '',
+          Description: result.description || '',
+          Thumbnail: result.thumbnail || '',
           MinAge: '',
           MaxAge: '',
           Reviews: '',
@@ -73,11 +76,16 @@ export default function AdminAddBook() {
           Reviews: '',
           Tags: [],
         });
-        setMessage('Google Books data not found. Please fill the form manually.');
+        setMessage('Book not found. Please fill manually.');
       }
+    } catch (err) {
+      console.error('Edge Function Error:', err);
+      setMessage('Error calling edge function.');
     }
 
+    // Get admin location and existing copies
     const { data: { user } } = await supabase.auth.getUser();
+
     const { data: admin } = await supabase
       .from('admininfo')
       .select('AdminLocation')
@@ -96,186 +104,135 @@ export default function AdminAddBook() {
     setCopyNumber((existingCopies?.length || 0) + 1);
   };
 
-  const handleTagChange = (tag) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
-
-  const handleThumbnailUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setThumbnailFile(file);
-      setThumbnailPreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleSubmit = async () => {
-    const thumbnailUrl = book.Thumbnail;
-
-    const { data: catalogExists } = await supabase
-      .from('catalog')
-      .select('*')
-      .eq('ISBN13', book.ISBN13)
-      .single();
-
-    if (!catalogExists) {
-      const { error: insertError } = await supabase.from('catalog').insert([
-        {
-          ISBN13: book.ISBN13,
-          Title: book.Title,
-          Authors: book.Authors,
-          Description: book.Description,
-          Thumbnail: thumbnailUrl,
-          MinAge: book.MinAge,
-          MaxAge: book.MaxAge,
-          Reviews: book.Reviews,
-        },
-      ]);
-
-      if (insertError) {
-        setMessage('❌ Failed to add catalog.');
-        return;
-      }
-    }
-
-    await supabase.from('copyinfo').insert([
-      {
-        ISBN13: book.ISBN13,
-        CopyNumber: copyNumber,
-        CopyLocation: location,
-        CopyLocationID: copyLocationID,
-        BuyPrice: buyPrice,
-        AskPrice: askPrice,
-      },
-    ]);
-
-    setMessage('✅ Book added successfully!');
-  };
-
   return (
-    <div className="p-4 max-w-xl mx-auto">
+    <div className="p-4 max-w-2xl mx-auto">
       <h1 className="text-xl font-bold mb-4">Admin: Add Book</h1>
 
       <input
         type="text"
         value={isbn}
         onChange={(e) => setIsbn(e.target.value)}
-        placeholder="Enter ISBN"
+        placeholder="Enter ISBN13"
         className="border p-2 rounded w-full mb-2"
       />
       <button
         onClick={handleSearch}
-        className="bg-blue-600 text-white w-full p-2 rounded hover:bg-blue-700 mb-4"
+        className="bg-blue-600 text-white px-4 py-2 rounded mb-4 hover:bg-blue-700"
       >
-        Search
+        Search Book
       </button>
 
+      {message && <div className="text-red-600 mb-2">{message}</div>}
+
       {book && (
-        <>
-          <input className="w-full border p-2 mb-2" value={book.ISBN13} disabled />
-          <input
-            className="w-full border p-2 mb-2"
-            value={book.Title}
-            onChange={(e) => setBook({ ...book, Title: e.target.value })}
-          />
-          <input
-            className="w-full border p-2 mb-2"
-            value={book.Authors}
-            onChange={(e) => setBook({ ...book, Authors: e.target.value })}
-          />
-          <input
-            className="w-full border p-2 mb-2"
-            value={book.MinAge}
-            placeholder="Min Age"
-            onChange={(e) => setBook({ ...book, MinAge: e.target.value })}
-          />
-          <input
-            className="w-full border p-2 mb-2"
-            value={book.MaxAge}
-            placeholder="Max Age"
-            onChange={(e) => setBook({ ...book, MaxAge: e.target.value })}
-          />
-          <input
-            className="w-full border p-2 mb-2"
-            value={book.Reviews}
-            placeholder="Reviews"
-            onChange={(e) => setBook({ ...book, Reviews: e.target.value })}
-          />
-          <textarea
-            className="w-full border p-2 mb-2"
-            value={book.Description}
-            rows={5}
-            onChange={(e) => setBook({ ...book, Description: e.target.value })}
-          />
-
-          {book.Thumbnail && (
-            <img src={book.Thumbnail} alt="Book Thumbnail" className="w-32 mb-2" />
-          )}
-
-          <input
-            type="file"
-            onChange={handleThumbnailUpload}
-            className="mb-4"
-          />
-
-          <label>Location</label>
-          <select
-            className="w-full border p-2 mb-2"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-          >
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.name}>{loc.name}</option>
-            ))}
-          </select>
-
-          <input
-            className="w-full border p-2 mb-2"
-            placeholder="Enter Copy Location ID"
-            value={copyLocationID}
-            onChange={(e) => setCopyLocationID(e.target.value)}
-          />
-          <input
-            className="w-full border p-2 mb-2"
-            placeholder="Enter Buy Price"
-            value={buyPrice}
-            onChange={(e) => setBuyPrice(e.target.value)}
-          />
-          <input
-            className="w-full border p-2 mb-2"
-            placeholder="Enter Ask Price"
-            value={askPrice}
-            onChange={(e) => setAskPrice(e.target.value)}
-          />
-
-          <div className="mb-2">
-            <p className="font-semibold">Tags:</p>
-            {tags.map((tag) => (
-              <label key={tag.id} className="block">
-                <input
-                  type="checkbox"
-                  checked={selectedTags.includes(tag.name)}
-                  onChange={() => handleTagChange(tag.name)}
-                />
-                {' '}
-                {tag.name}
-              </label>
-            ))}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold">Title</label>
+            <input
+              type="text"
+              value={book.Title}
+              onChange={(e) => setBook({ ...book, Title: e.target.value })}
+              className="w-full border px-2 py-1 rounded"
+            />
           </div>
 
-          <p className="mb-4">Next Copy Number: <strong>{copyNumber}</strong></p>
+          <div>
+            <label className="block text-sm font-semibold">Authors</label>
+            <input
+              type="text"
+              value={book.Authors}
+              onChange={(e) => setBook({ ...book, Authors: e.target.value })}
+              className="w-full border px-2 py-1 rounded"
+            />
+          </div>
 
-          <button
-            onClick={handleSubmit}
-            className="w-full bg-green-600 text-white p-2 rounded hover:bg-green-700"
-          >
-            Confirm & Add Book
-          </button>
-        </>
+          <div>
+            <label className="block text-sm font-semibold">Description</label>
+            <textarea
+              value={book.Description}
+              onChange={(e) => setBook({ ...book, Description: e.target.value })}
+              className="w-full border px-2 py-1 rounded"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold">Thumbnail</label>
+            <img src={book.Thumbnail} alt="Book Thumbnail" className="h-32 my-2" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold">Age Range</label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                placeholder="Min Age"
+                value={book.MinAge}
+                onChange={(e) => setBook({ ...book, MinAge: e.target.value })}
+                className="border px-2 py-1 rounded w-full"
+              />
+              <input
+                type="number"
+                placeholder="Max Age"
+                value={book.MaxAge}
+                onChange={(e) => setBook({ ...book, MaxAge: e.target.value })}
+                className="border px-2 py-1 rounded w-full"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold">Location: {location}</label>
+            <label className="block text-sm">Copy Number: {copyNumber}</label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold">Select Tags</label>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {tags.map((tag) => (
+                <button
+                  key={tag.TagName}
+                  onClick={() =>
+                    setSelectedTags((prev) =>
+                      prev.includes(tag.TagName)
+                        ? prev.filter((t) => t !== tag.TagName)
+                        : [...prev, tag.TagName]
+                    )
+                  }
+                  className={`px-2 py-1 rounded-full border ${
+                    selectedTags.includes(tag.TagName)
+                      ? 'bg-purple-500 text-white'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  {tag.TagName}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold">Buy Price</label>
+            <input
+              type="number"
+              value={buyPrice}
+              onChange={(e) => setBuyPrice(e.target.value)}
+              className="w-full border px-2 py-1 rounded"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold">Ask Price</label>
+            <input
+              type="number"
+              value={askPrice}
+              onChange={(e) => setAskPrice(e.target.value)}
+              className="w-full border px-2 py-1 rounded"
+            />
+          </div>
+
+          {/* Add form submit handler if needed */}
+        </div>
       )}
-
-      {message && <div className="mt-4 text-center text-blue-700">{message}</div>}
     </div>
   );
 }
