@@ -77,7 +77,10 @@ export default function AdminAddBook() {
       }
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     const { data: admin } = await supabase
       .from('admininfo')
       .select('AdminLocation')
@@ -96,5 +99,41 @@ export default function AdminAddBook() {
     setCopyNumber((existingCopies?.length || 0) + 1);
   };
 
-  // ... rest of the component remains unchanged
+  return (
+    <div className="p-4 max-w-2xl mx-auto">
+      <h1 className="text-xl font-bold mb-4">Admin: Add Book</h1>
+
+      <input
+        type="text"
+        value={isbn}
+        onChange={(e) => setIsbn(e.target.value)}
+        placeholder="Enter ISBN13"
+        className="border p-2 rounded w-full mb-2"
+      />
+      <button
+        onClick={handleSearch}
+        className="bg-blue-600 text-white px-4 py-2 rounded mb-4 hover:bg-blue-700"
+      >
+        Search Book
+      </button>
+
+      {message && <div className="text-red-600 mb-2">{message}</div>}
+
+      {book && (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold">Title</label>
+            <input
+              type="text"
+              value={book.Title}
+              onChange={(e) => setBook({ ...book, Title: e.target.value })}
+              className="w-full border px-2 py-1 rounded"
+            />
+          </div>
+
+          {/* Add more input fields as needed */}
+        </div>
+      )}
+    </div>
+  );
 }
