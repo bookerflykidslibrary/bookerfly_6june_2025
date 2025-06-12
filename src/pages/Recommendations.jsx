@@ -73,7 +73,7 @@ export default function AdminAddBook() {
           Reviews: '',
           Tags: [],
         });
-        setMessage('Google Books data not found. Please enter details manually.');
+        setMessage('Google Books data not found. Please fill the form manually.');
       }
     }
 
