@@ -23,7 +23,6 @@ export default function AdminAddBook() {
     const fetchTagsAndLocations = async () => {
       const { data: tagList } = await supabase.from('tags').select('*');
       setTags(tagList || []);
-
       const { data: locationList } = await supabase.from('locations').select('*');
       setLocations(locationList || []);
     };
@@ -169,89 +168,70 @@ export default function AdminAddBook() {
     setAskPrice('');
   };
 
-  const startScan = async () => {
-    const scannerId = 'isbn-scanner';
-    if (scanner) {
-      await scanner.stop();
-      setScanner(null);
-      document.getElementById(scannerId).innerHTML = '';
-    }
-
-    const newScanner = new Html5Qrcode(scannerId);
-    setScanner(newScanner);
+  const startScan = () => {
     setShowScanner(true);
-
-    newScanner
-      .start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: 250 },
-        (decodedText) => {
-          setIsbn(decodedText);
-          newScanner.stop().then(() => {
-            document.getElementById(scannerId).innerHTML = '';
-            setScanner(null);
-            setShowScanner(false);
-          });
-        },
-        () => {}
-      )
-      .catch((err) => {
-        console.error("Scanner init failed", err);
-        setShowScanner(false);
-      });
   };
 
   const stopScan = async () => {
     if (scanner) {
-      await scanner.stop();
-      document.getElementById('isbn-scanner').innerHTML = '';
+      try {
+        await scanner.stop();
+      } catch (e) {
+        console.warn('Scanner stop error', e);
+      }
       setScanner(null);
     }
+    const el = document.getElementById('isbn-scanner');
+    if (el) el.innerHTML = '';
     setShowScanner(false);
   };
 
+  useEffect(() => {
+    const initScanner = async () => {
+      if (showScanner && !scanner && document.getElementById('isbn-scanner')) {
+        const newScanner = new Html5Qrcode('isbn-scanner');
+        setScanner(newScanner);
+
+        try {
+          await newScanner.start(
+            { facingMode: 'environment' },
+            { fps: 10, qrbox: 250 },
+            (decodedText) => {
+              setIsbn(decodedText);
+              stopScan();
+            },
+            (err) => {
+              console.warn('Scan error', err);
+            }
+          );
+        } catch (err) {
+          console.error('Scanner init failed', err);
+          stopScan();
+        }
+      }
+    };
+    initScanner();
+  }, [showScanner]);
+
   return (
-    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8">
+    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
       <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
 
-      <div className="flex items-center gap-2">
+      <div className="flex gap-2 mb-2">
         <input
           type="text"
           value={isbn}
           onChange={(e) => setIsbn(e.target.value)}
           placeholder="Enter ISBN13"
-          className="flex-grow p-2 border border-gray-300 rounded"
+          className="w-full p-2 border border-gray-300 rounded"
         />
-        <button
-          onClick={startScan}
-          className="bg-yellow-500 text-white px-4 py-2 rounded"
-        >
-          📷 Scan
-        </button>
+        <button onClick={startScan} className="bg-purple-600 text-white px-3 rounded">📷</button>
       </div>
 
-      <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mt-2">
-        Search
-      </button>
-
-      {showScanner && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center">
-          <div className="bg-white rounded-lg shadow-lg p-4 w-full max-w-sm relative">
-            <h3 className="text-lg font-bold mb-2 text-center">Scan ISBN Barcode</h3>
-            <div id="isbn-scanner" className="w-full h-64 rounded" />
-            <button
-              onClick={stopScan}
-              className="absolute top-2 right-2 text-gray-500 hover:text-black text-xl"
-              aria-label="Close"
-            >
-              &times;
-            </button>
-          </div>
-        </div>
-      )}
+      <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
 
       {book && (
-        <div className="mt-4 space-y-2">
+        <div className="space-y-2">
           {['ISBN13', 'Title', 'Authors', 'MinAge', 'MaxAge', 'Reviews'].map((field) => (
             <input
               key={field}
@@ -285,12 +265,7 @@ export default function AdminAddBook() {
             onChange={(e) => {
               const file = e.target.files[0];
               setThumbnailFile(file);
-
-              if (file) {
-                setThumbnailPreview(URL.createObjectURL(file));
-              } else {
-                setThumbnailPreview(null);
-              }
+              setThumbnailPreview(file ? URL.createObjectURL(file) : null);
             }}
             className="w-full p-2 border border-gray-300 rounded"
           />
@@ -306,7 +281,7 @@ export default function AdminAddBook() {
             ))}
           </select>
 
-          <label className="block mt-2 text-sm font-semibold">Copy Location ID</label>
+          <label className="block text-sm font-semibold">Copy Location ID</label>
           <input
             type="text"
             value={copyLocationID}
@@ -315,7 +290,7 @@ export default function AdminAddBook() {
             className="w-full p-2 border border-gray-300 rounded"
           />
 
-          <label className="block mt-2 text-sm font-semibold">Buy Price</label>
+          <label className="block text-sm font-semibold">Buy Price</label>
           <input
             type="number"
             value={buyPrice}
@@ -324,7 +299,7 @@ export default function AdminAddBook() {
             className="w-full p-2 border border-gray-300 rounded"
           />
 
-          <label className="block mt-2 text-sm font-semibold">Ask Price</label>
+          <label className="block text-sm font-semibold">Ask Price</label>
           <input
             type="number"
             value={askPrice}
@@ -362,6 +337,19 @@ export default function AdminAddBook() {
       )}
 
       {message && <p className="mt-4 text-green-700 text-center font-semibold">{message}</p>}
+
+      {showScanner && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center">
+          <div className="bg-white p-4 rounded shadow max-w-sm w-full relative">
+            <button
+              onClick={stopScan}
+              className="absolute top-1 right-2 text-red-600 text-xl"
+            >✖</button>
+            <p className="text-center text-sm font-medium mb-2">Scan ISBN Barcode</p>
+            <div id="isbn-scanner" className="w-full h-[300px]"></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
