@@ -21,14 +21,7 @@ export default function ReviewBooks({ adminLocation }) {
       return;
     }
 
-    const { data: copyData } = await supabase
-      .from('copyinfo')
-      .select('*')
-      .eq('ISBN13', isbn)
-      .eq('CopyLocation', adminLocation)
-      .maybeSingle();
-
-    setBookData({ ...catalogData, ...copyData });
+    setBookData(catalogData);
     setLoading(false);
   };
 
@@ -46,15 +39,7 @@ export default function ReviewBooks({ adminLocation }) {
     }
 
     const randomBook = catalogList[Math.floor(Math.random() * catalogList.length)];
-
-    const { data: copyData } = await supabase
-      .from('copyinfo')
-      .select('*')
-      .eq('ISBN13', randomBook.ISBN13)
-      .eq('CopyLocation', adminLocation)
-      .maybeSingle();
-
-    setBookData({ ...randomBook, ...copyData });
+    setBookData(randomBook);
     setLoading(false);
   };
 
@@ -66,28 +51,19 @@ export default function ReviewBooks({ adminLocation }) {
   const handleSubmit = async () => {
     setLoading(true);
 
-    const { ISBN13, CopyID, CopyLocation, CopyLocationID, ...catalogFields } = bookData;
+    const { ISBN13, ...catalogFields } = bookData;
 
-    const { error: updateCatalogErr } = await supabase
+    const { error } = await supabase
       .from('catalog')
       .update({ ...catalogFields, BookReviewed: true })
       .eq('ISBN13', ISBN13);
 
-    const { error: updateCopyErr } = await supabase
-      .from('copyinfo')
-      .update({
-        CopyBooked: bookData.CopyBooked === 'true' || bookData.CopyBooked === true,
-        BuyPrice: bookData.BuyPrice,
-        AskPrice: bookData.AskPrice,
-      })
-      .eq('CopyID', CopyID);
-
-    if (!updateCatalogErr && !updateCopyErr) {
+    if (!error) {
       alert('Book review submitted successfully!');
       setBookData(null);
     } else {
       alert('Failed to submit review.');
-      console.error(updateCatalogErr, updateCopyErr);
+      console.error(error);
     }
 
     setLoading(false);
@@ -166,19 +142,6 @@ export default function ReviewBooks({ adminLocation }) {
               )}
             </div>
           ))}
-
-          <div>
-            <label className="block font-medium">CopyBooked</label>
-            <select
-              name="CopyBooked"
-              value={bookData.CopyBooked ? 'true' : 'false'}
-              onChange={handleChange}
-              className="border p-2 rounded w-full"
-            >
-              <option value="false">False</option>
-              <option value="true">True</option>
-            </select>
-          </div>
 
           <button
             onClick={handleSubmit}
