@@ -49,22 +49,33 @@ export default function AdminAddBook() {
       setBook(catalogData);
     } else {
       const info = await fetchFromGoogleBooks(isbn);
-      if (info) {
-        setBook({
-          ISBN13: isbn,
-          Title: info.title || '',
-          Authors: info.authors?.join(', ') || '',
-          Description: info.description || '',
-          Thumbnail: info.imageLinks?.thumbnail || '',
-          MinAge: '',
-          MaxAge: '',
-          Reviews: '',
-          Tags: [],
-        });
-      } else {
-        setMessage('Book not found in Google Books API.');
-        return;
-      }
+if (info) {
+  setBook({
+    ISBN13: isbn,
+    Title: info.title || '',
+    Authors: info.authors?.join(', ') || '',
+    Description: info.description || '',
+    Thumbnail: info.imageLinks?.thumbnail || '',
+    MinAge: '',
+    MaxAge: '',
+    Reviews: '',
+    Tags: [],
+  });
+} else {
+  setMessage('Google Books info not found. You can still enter details manually.');
+  setBook({
+    ISBN13: isbn,
+    Title: '',
+    Authors: '',
+    Description: '',
+    Thumbnail: '',
+    MinAge: '',
+    MaxAge: '',
+    Reviews: '',
+    Tags: [],
+  });
+}
+
     }
 
     const { data: { user } } = await supabase.auth.getUser();
