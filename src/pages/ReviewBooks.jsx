@@ -66,7 +66,7 @@ export default function ReviewBooks({ adminLocation }) {
   const handleSubmit = async () => {
     setLoading(true);
 
-    const { ISBN13, CopyID, ...catalogFields } = bookData;
+    const { ISBN13, CopyID, CopyLocation, CopyLocationID, ...catalogFields } = bookData;
 
     const { error: updateCatalogErr } = await supabase
       .from('catalog')
@@ -76,9 +76,7 @@ export default function ReviewBooks({ adminLocation }) {
     const { error: updateCopyErr } = await supabase
       .from('copyinfo')
       .update({
-        CopyLocation: bookData.CopyLocation,
         CopyBooked: bookData.CopyBooked === 'true' || bookData.CopyBooked === true,
-        CopyLocationID: bookData.CopyLocationID,
         BuyPrice: bookData.BuyPrice,
         AskPrice: bookData.AskPrice,
       })
@@ -145,8 +143,6 @@ export default function ReviewBooks({ adminLocation }) {
             'Tags',
             'MinAge',
             'MaxAge',
-            'CopyLocation',
-            'CopyLocationID',
             'BuyPrice',
             'AskPrice'
           ].map((field) => (
