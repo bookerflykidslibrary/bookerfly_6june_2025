@@ -119,8 +119,6 @@ export default function ReviewBooks({ adminLocation }) {
             'Tags',
             'MinAge',
             'MaxAge',
-            'BuyPrice',
-            'AskPrice'
           ].map((field) => (
             <div key={field}>
               <label className="block font-medium">{field}</label>
