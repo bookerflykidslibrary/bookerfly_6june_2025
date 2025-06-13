@@ -1,34 +1,28 @@
-import { Link } from 'react-router-dom'
-import supabase from '../utils/supabaseClient'
+import { Link } from 'react-router-dom';
+import supabase from '../utils/supabaseClient';
 
 export default function Navbar({ user }) {
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/login' // Better UX than reload
-  }
+    await supabase.auth.signOut();
+    window.location.href = '/login'; // Better UX than reload
+  };
 
   return (
     <nav className="flex flex-col sm:flex-row justify-between items-center p-4 bg-blue-600 text-white space-y-2 sm:space-y-0">
       <div className="space-x-4">
         <Link to="/catalog" className="hover:underline">Catalog</Link>
-      </div>
-      <div className="space-x-4">
         <Link to="/my-books" className="hover:underline">My Books</Link>
-      </div>
-      <div className="space-x-4">
         <Link to="/recommendations" className="hover:underline">Test Page</Link>
-      </div>
-      <div  className="space-x-4">
-        {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/add-book" className="hover:underline">Add a Book</Link>}
-      </div>
-      <div className="space-x-4">
-        {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/issue-books" className="hover:underline">Issue Books</Link>}
-      </div>
-      <div className="space-x-4">
-        {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/signup" className="hover:underline">Sign Up</Link>}
-      </div>
-      <div  className="space-x-4">
-        {user?.email === 'vkansal12@gmail.com' && <Link to="/admin/edit-customer" className="hover:underline">View Customer</Link>}
+
+        {user?.email === 'vkansal12@gmail.com' && (
+          <>
+            <Link to="/admin/add-book" className="hover:underline">Add a Book</Link>
+            <Link to="/admin/issue-books" className="hover:underline">Issue Books</Link>
+            <Link to="/admin/signup" className="hover:underline">Sign Up</Link>
+            <Link to="/admin/edit-customer" className="hover:underline">View Customer</Link>
+            <Link to="/admin/review-books" className="hover:underline">Review Books</Link> {/* 👈 New Link */}
+          </>
+        )}
       </div>
 
       <div className="flex items-center space-x-4">
@@ -47,8 +41,7 @@ export default function Navbar({ user }) {
         ) : (
           <Link to="/login" className="hover:underline">Login</Link>
         )}
-
       </div>
     </nav>
-  )
+  );
 }

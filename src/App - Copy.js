@@ -10,9 +10,8 @@ import MyBooks from './pages/MyBooks';
 import Recommendations from './pages/Recommendations';
 import AdminAddBook from './pages/AdminAddBook';
 import IssueBooks from './pages/IssueBooks';
-import SignupForm from './components/SignupForm';
+import SignupForm from './components/SignupForm'
 import AdminCustomerEditor from './pages/AdminCustomerEditor';
-import ReviewBooks from './pages/ReviewBooks'; // 👈 Import the new page
 
 const supabase = createClient(
   process.env.REACT_APP_PUBLIC_SUPABASE_URL,
@@ -44,6 +43,7 @@ function AppRoutes() {
 
     checkAuth();
 
+    // Also listen to auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
     });
@@ -66,10 +66,6 @@ function AppRoutes() {
         <Route path="/admin/issue-books" element={<IssueBooks user={user} />} />
         <Route path="/admin/signup" element={<SignupForm />} />
         <Route path="/admin/edit-customer" element={<AdminCustomerEditor user={user} />} />
-        <Route
-          path="/admin/review-books"
-          element={<ReviewBooks adminLocation={user?.user_metadata?.location || 'Unknown'} />}
-        />
       </Routes>
     </>
   );
