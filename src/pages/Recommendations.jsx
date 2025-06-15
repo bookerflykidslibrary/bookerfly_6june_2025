@@ -44,8 +44,7 @@ export default function IssueBooks() {
       const orClause = [
         `CustomerName.ilike.*${trimmed}*`,
         `EmailID.ilike.*${trimmed}*`,
-        `ChildName.ilike.*${trimmed}*`,
-        `MobileNumber.ilike.*${trimmed}*`
+        `ContactNo.ilike.*${trimmed}*`
       ];
 
       let { data, error } = await supabase
