@@ -13,7 +13,7 @@ import IssueBooks from './pages/IssueBooks';
 import SignupForm from './components/SignupForm';
 import AdminCustomerEditor from './pages/AdminCustomerEditor';
 import ReviewBooks from './pages/ReviewBooks'; // 👈 Import the new page
-import PublicSignup from './pages/PublicSignup';
+import PublicSignup from './pages/PublicSignUp';
 
 const supabase = createClient(
   process.env.REACT_APP_PUBLIC_SUPABASE_URL,
