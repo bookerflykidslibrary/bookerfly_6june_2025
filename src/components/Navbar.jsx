@@ -26,8 +26,6 @@ export default function Navbar({ user }) {
                 <Link to="/admin/signup" className="hover:underline">Sign Up</Link>
                 <Link to="/admin/edit-customer" className="hover:underline">View Customer</Link>
                 <Link to="/admin/review-books" className="hover:underline">Review Books</Link>
-                <Link to="/admin/view-signup-requests" className="hover:underline">  View Sign-Up Requests</Link>
-
               </>
             )}
 
