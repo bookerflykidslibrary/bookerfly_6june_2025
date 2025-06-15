@@ -12,7 +12,7 @@ export default function Navbar({ user }) {
       <div className="space-x-4">
         <Link to="/catalog" className="hover:underline">Catalog</Link>
         <Link to="/my-books" className="hover:underline">My Books</Link>
-        <Link to="/recommendations" className="hover:underline">Test Page</Link>
+        <Link to="/signup-request" className="hover:underline">Become a member</Link>
 
         {user?.email === 'vkansal12@gmail.com' && (
           <>
@@ -21,6 +21,7 @@ export default function Navbar({ user }) {
             <Link to="/admin/signup" className="hover:underline">Sign Up</Link>
             <Link to="/admin/edit-customer" className="hover:underline">View Customer</Link>
             <Link to="/admin/review-books" className="hover:underline">Review Books</Link> {/* 👈 New Link */}
+            <Link to="/recommendations" className="hover:underline">Test Page</Link>
           </>
         )}
       </div>
