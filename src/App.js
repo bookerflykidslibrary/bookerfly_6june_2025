@@ -14,6 +14,7 @@ import SignupForm from './components/SignupForm';
 import AdminCustomerEditor from './pages/AdminCustomerEditor';
 import ReviewBooks from './pages/ReviewBooks'; // 👈 Import the new page
 import PublicSignup from './pages/PublicSignUp';
+import AdminSignUpRequests from './pages/AdminSignUpRequests';
 
 const supabase = createClient(
   process.env.REACT_APP_PUBLIC_SUPABASE_URL,
@@ -72,7 +73,12 @@ function AppRoutes() {
           path="/admin/review-books"
           element={<ReviewBooks adminLocation={user?.user_metadata?.location || 'Unknown'} />}
         />
+        <Route
+          path="/admin/view-signup-requests"
+          element={user?.email === 'vkansal12@gmail.com'? <AdminSignUpRequests /> : <div className="p-4">Access denied</div>}
+        />
       </Routes>
+
     </>
   );
 }
