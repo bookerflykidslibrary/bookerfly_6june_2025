@@ -5,6 +5,8 @@ import ScannerDialog from '../components/ScannerDialog';
 export default function IssueBooks() {
   const [bookInputs, setBookInputs] = useState(Array(10).fill({ value: '', type: 'ISBN13' }));
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [books, setBooks] = useState([]);
   const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState('');
@@ -29,6 +31,49 @@ export default function IssueBooks() {
     };
     checkAdmin();
   }, []);
+
+  useEffect(() => {
+    if (customerSearch.trim().length < 2) {
+      setCustomerSuggestions([]);
+      return;
+    }
+
+    const fetchSuggestions = async () => {
+      const trimmed = customerSearch.trim();
+      const isNumeric = /^\d+$/.test(trimmed);
+      const orClause = [
+        `CustomerName.ilike.*${trimmed}*`,
+        `EmailID.ilike.*${trimmed}*`,
+        `ChildName.ilike.*${trimmed}*`,
+        `MobileNumber.ilike.*${trimmed}*`
+      ];
+
+      let { data, error } = await supabase
+        .from('customerinfo')
+        .select('CustomerID, Name, EmailID, ChildName, MobileNumber')
+        .or(orClause.join(','))
+        .limit(10);
+
+      if (!error) setCustomerSuggestions(data || []);
+      else setCustomerSuggestions([]);
+    };
+
+    fetchSuggestions();
+  }, [customerSearch]);
+
+  const handleSelectCustomer = async (customerId) => {
+    const { data, error } = await supabase
+      .from('customerinfo')
+      .select('*')
+      .eq('CustomerID', customerId)
+      .single();
+
+    if (!error) {
+      setSelectedCustomer(data);
+      setCustomerSearch('');
+      setCustomerSuggestions([]);
+    }
+  };
 
   const handleInputChange = (index, field, value) => {
     const updated = [...bookInputs];
@@ -151,10 +196,29 @@ export default function IssueBooks() {
 
       <input
         type="text"
-        placeholder="Customer ID"
-        className="w-full p-2 mb-4 border border-gray-300 rounded"
-        onChange={(e) => setSelectedCustomer({ CustomerID: e.target.value })}
+        placeholder="Search by Name, Email, Child Name or Phone"
+        className="w-full p-2 mb-2 border border-gray-300 rounded"
+        value={customerSearch}
+        onChange={(e) => setCustomerSearch(e.target.value)}
       />
+
+      {customerSuggestions.length > 0 && (
+        <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded z-10 relative">
+          {customerSuggestions.map((c) => (
+            <li
+              key={c.CustomerID}
+              onClick={() => handleSelectCustomer(c.CustomerID)}
+              className="p-2 hover:bg-blue-100 cursor-pointer"
+            >
+              #{c.CustomerID} — {c.Name}, {c.EmailID}, {c.ChildName}, {c.MobileNumber}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {selectedCustomer && (
+        <p className="text-sm mb-4">Selected Customer: <strong>{selectedCustomer.CustomerID}</strong> — {selectedCustomer.Name}</p>
+      )}
 
       {bookInputs.map((entry, index) => (
         <div key={index} className="flex gap-2 mb-2 items-center">
