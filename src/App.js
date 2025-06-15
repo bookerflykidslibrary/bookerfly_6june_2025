@@ -21,7 +21,7 @@ const supabase = createClient(
 );
 
 // Public routes
-const publicPaths = ['/', '/login', '/catalog', '/PublicSignup'];
+const publicPaths = ['/', '/login', '/catalog', '/signup-request'];
 
 function AppRoutes() {
   const [loading, setLoading] = useState(true);
