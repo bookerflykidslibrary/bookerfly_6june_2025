@@ -1,353 +1,279 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import supabase from '../utils/supabaseClient';
 
-export default function AdminAddBook() {
-  const [isbn, setIsbn] = useState('');
-  const [book, setBook] = useState(null);
-  const [tags, setTags] = useState([]);
-  const [thumbnailFile, setThumbnailFile] = useState(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState(null);
-  const [selectedTags, setSelectedTags] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [location, setLocation] = useState('');
-  const [copyNumber, setCopyNumber] = useState(1);
-  const [copyLocationID, setCopyLocationID] = useState('');
-  const [buyPrice, setBuyPrice] = useState('');
-  const [askPrice, setAskPrice] = useState('');
+export default function IssueBooks() {
+  const [bookInputs, setBookInputs] = useState(Array(10).fill({ value: '', type: 'ISBN13' }));
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [books, setBooks] = useState([]);
+  const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState('');
-  const [showScanner, setShowScanner] = useState(false);
-  const [scanner, setScanner] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminLocation, setAdminLocation] = useState('');
+  const [activeScanIndex, setActiveScanIndex] = useState(null);
+  const html5QrCodeRef = useRef(null);
 
   useEffect(() => {
-    const fetchTagsAndLocations = async () => {
-      const { data: tagList } = await supabase.from('tags').select('*');
-      setTags(tagList || []);
-      const { data: locationList } = await supabase.from('locations').select('*');
-      setLocations(locationList || []);
+    const checkAdmin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: admin } = await supabase
+        .from('admininfo')
+        .select('AdminLocation')
+        .eq('AdminID', user.id)
+        .single();
+      if (admin) {
+        setIsAdmin(true);
+        setAdminLocation(admin.AdminLocation);
+      }
     };
-    fetchTagsAndLocations();
+    checkAdmin();
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (thumbnailPreview) {
-        URL.revokeObjectURL(thumbnailPreview);
-      }
-    };
-  }, [thumbnailPreview]);
-
-  const fetchFromGoogleBooks = async (isbn) => {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-    const json = await res.json();
-    return json.items?.[0]?.volumeInfo;
+  const handleInputChange = (index, field, value) => {
+    const updated = [...bookInputs];
+    updated[index] = { ...updated[index], [field]: value };
+    setBookInputs(updated);
   };
 
-  const handleSearch = async () => {
-    setMessage('');
-    const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
-
-    if (catalogData) {
-      setBook(catalogData);
-    } else {
-      const info = await fetchFromGoogleBooks(isbn);
-      if (info) {
-        setBook({
-          ISBN13: isbn,
-          Title: info.title || '',
-          Authors: info.authors?.join(', ') || '',
-          Description: info.description || '',
-          Thumbnail: info.imageLinks?.thumbnail || '',
-          MinAge: '',
-          MaxAge: '',
-          Reviews: '',
-          Tags: [],
-        });
-      } else {
-        setMessage('Google Books info not found. You can still enter details manually.');
-        setBook({
-          ISBN13: isbn,
-          Title: '',
-          Authors: '',
-          Description: '',
-          Thumbnail: '',
-          MinAge: '',
-          MaxAge: '',
-          Reviews: '',
-          Tags: [],
-        });
-      }
-    }
-
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: admin } = await supabase
-      .from('admininfo')
-      .select('AdminLocation')
-      .eq('AdminID', user.id)
-      .single();
-
-    const loc = admin?.AdminLocation || '';
-    setLocation(loc);
-
-    const { data: existingCopies } = await supabase
-      .from('copyinfo')
-      .select('*')
-      .eq('ISBN13', isbn)
-      .eq('CopyLocation', loc);
-
-    setCopyNumber((existingCopies?.length || 0) + 1);
-  };
-
-  const handleTagChange = (tagName) => {
-    if (selectedTags.includes(tagName)) {
-      setSelectedTags(selectedTags.filter((t) => t !== tagName));
-    } else {
-      setSelectedTags([...selectedTags, tagName]);
+  const handleScannedISBN = (isbn) => {
+    if (activeScanIndex !== null) {
+      const updated = [...bookInputs];
+      updated[activeScanIndex] = { value: isbn, type: updated[activeScanIndex].type };
+      setBookInputs(updated);
+      stopScanner();
+      setMessage(`✅ Scanned into box ${activeScanIndex + 1}`);
     }
   };
 
-  const handleThumbnailUpload = async () => {
-    if (!thumbnailFile) return book.Thumbnail || '';
+  const startScanner = async (index) => {
+    stopScanner();
+    setActiveScanIndex(index);
+    html5QrCodeRef.current = new Html5Qrcode(`scanner-${index}`);
+    html5QrCodeRef.current.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      (decodedText) => handleScannedISBN(decodedText),
+      () => {}
+    );
+  };
 
-    const fileExt = thumbnailFile.name.split('.').pop();
-    const fileName = `${isbn}_${Date.now()}.${fileExt}`;
-    const filePath = `thumbnails/covers/${fileName}`;
+  const stopScanner = () => {
+    if (html5QrCodeRef.current) {
+      html5QrCodeRef.current.stop().then(() => {
+        html5QrCodeRef.current.clear();
+        html5QrCodeRef.current = null;
+        setActiveScanIndex(null);
+      });
+    }
+  };
 
-    const { error: uploadError } = await supabase.storage
-      .from('bookassets')
-      .upload(filePath, thumbnailFile);
-
-    if (uploadError) {
-      setMessage('Thumbnail upload failed: ' + uploadError.message);
-      return '';
+  const handleReview = async () => {
+    if (!selectedCustomer?.CustomerID) {
+      setMessage('Please select a customer.');
+      return;
     }
 
-    const { data } = supabase.storage.from('bookassets').getPublicUrl(filePath);
-    return data.publicUrl;
-  };
-
-  const handleAdd = async () => {
-    if (!book) return;
-
-    const thumbnailUrl = await handleThumbnailUpload();
-
-    const newBook = {
-      ...book,
-      Tags: selectedTags.join(','),
-      ISBN13: isbn,
-      MinAge: book.MinAge || 0,
-      MaxAge: book.MaxAge || 18,
-      Thumbnail: thumbnailUrl,
-    };
-
-    const { error: catalogError } = await supabase.from('catalog').upsert(newBook);
-    if (catalogError) return setMessage('Error adding to catalog: ' + catalogError.message);
-
-    const copyID = Date.now().toString();
-
-    const { error: copyError } = await supabase.from('copyinfo').insert({
-      CopyID: copyID,
-      ISBN13: isbn,
-      CopyNumber: copyNumber,
-      CopyLocation: location,
-      CopyLocationID: copyLocationID,
-      BuyPrice: buyPrice,
-      AskPrice: askPrice,
-      CopyBooked: false,
-    });
-
-    if (copyError) return setMessage('Error adding copy: ' + copyError.message);
-
-    setMessage('✅ Book and copy added successfully!');
-    setBook(null);
-    setThumbnailFile(null);
-    setThumbnailPreview(null);
-    setSelectedTags([]);
-    setCopyLocationID('');
-    setBuyPrice('');
-    setAskPrice('');
-  };
-
-  const startScan = () => {
-    setShowScanner(true);
-  };
-
-  const stopScan = async () => {
-    if (scanner) {
-      try {
-        await scanner.stop();
-      } catch (e) {
-        console.warn('Scanner stop error', e);
-      }
-      setScanner(null);
+    const filtered = bookInputs.filter(entry => entry.value.trim() !== '');
+    if (filtered.length === 0) {
+      setMessage('Please enter at least one Book ID or scan.');
+      return;
     }
-    const el = document.getElementById('isbn-scanner');
-    if (el) el.innerHTML = '';
-    setShowScanner(false);
-  };
 
-  useEffect(() => {
-    const initScanner = async () => {
-      if (showScanner && !scanner && document.getElementById('isbn-scanner')) {
-        const newScanner = new Html5Qrcode('isbn-scanner');
-        setScanner(newScanner);
+    let allBooks = [];
 
-        try {
-          await newScanner.start(
-            { facingMode: 'environment' },
-            { fps: 10, qrbox: 250 },
-            (decodedText) => {
-              setIsbn(decodedText);
-            },
-            (err) => {
-              console.warn('Scan error', err);
-            }
-          );
-        } catch (err) {
-          console.error('Scanner init failed', err);
-          stopScan();
+    for (let entry of filtered) {
+      if (entry.type === 'ISBN13') {
+        const { data: copy } = await supabase
+          .from('copyinfo')
+          .select('CopyID, ISBN13, CopyNumber')
+          .eq('ISBN13', entry.value)
+          .eq('CopyLocation', adminLocation)
+          .eq('CopyBooked', false)
+          .limit(1)
+          .maybeSingle();
+
+        if (!copy) {
+          allBooks.push({ error: `No available copy found for ${entry.value}` });
+          continue;
+        }
+
+        const { data: book } = await supabase
+          .from('catalog')
+          .select('Title, Authors, ISBN13, Thumbnail')
+          .eq('ISBN13', copy.ISBN13)
+          .single();
+
+        if (book) {
+          allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
+        }
+
+      } else if (entry.type === 'CopyLocationID') {
+        const { data: copy } = await supabase
+          .from('copyinfo')
+          .select('CopyID, ISBN13, CopyBooked, CopyNumber')
+          .eq('CopyLocationID', entry.value)
+          .maybeSingle();
+
+        if (!copy) {
+          allBooks.push({ error: `Invalid CopyLocationID: ${entry.value}` });
+          continue;
+        }
+
+        if (copy.CopyBooked) {
+          allBooks.push({ error: `Copy ${entry.value} is already booked.` });
+          continue;
+        }
+
+        const { data: book } = await supabase
+          .from('catalog')
+          .select('Title, Authors, ISBN13, Thumbnail')
+          .eq('ISBN13', copy.ISBN13)
+          .single();
+
+        if (book) {
+          allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
         }
       }
-    };
-    initScanner();
-  }, [showScanner]);
+    }
+
+    setBooks(allBooks);
+    setConfirming(true);
+    setMessage('');
+  };
+
+  const handleConfirm = async () => {
+    const today = new Date().toISOString();
+    const validBooks = books.filter(b => !b.error);
+
+    const records = validBooks.map(book => ({
+      LibraryBranch: adminLocation,
+      ISBN13: book.ISBN13,
+      CopyID: book.CopyID,
+      BookingDate: today,
+      ReturnDate: null,
+      MemberID: selectedCustomer.CustomerID,
+      Comment: '',
+    }));
+
+    const { error } = await supabase.from('circulationhistory').insert(records);
+
+    if (error) {
+      setMessage('Error issuing books: ' + error.message);
+    } else {
+      await supabase
+        .from('copyinfo')
+        .update({ CopyBooked: true })
+        .in('CopyID', validBooks.map(b => b.CopyID));
+
+      setMessage('✅ Books issued successfully!');
+      setConfirming(false);
+      setBooks([]);
+      setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
+    }
+  };
+
+  if (!isAdmin) {
+    return <div className="text-center p-4 text-red-600 font-bold">Access Denied: Admins Only</div>;
+  }
 
   return (
-    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
-      <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
+    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8">
+      <h2 className="text-2xl font-bold text-center text-purple-700 mb-4">Issue Books</h2>
 
-      <div className="flex gap-2 mb-2">
-        <input
-          type="text"
-          value={isbn}
-          onChange={(e) => setIsbn(e.target.value)}
-          placeholder="Enter ISBN13"
-          className="w-full p-2 border border-gray-300 rounded"
-        />
-        <button onClick={startScan} className="bg-purple-600 text-white px-3 rounded">📷</button>
-      </div>
+      <input
+        type="text"
+        placeholder="Customer ID"
+        className="w-full p-2 mb-4 border border-gray-300 rounded"
+        onChange={(e) => setSelectedCustomer({ CustomerID: e.target.value })}
+      />
 
-      <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
-
-      {book && (
-        <div className="space-y-2">
-          {['ISBN13', 'Title', 'Authors', 'MinAge', 'MaxAge', 'Reviews'].map((field) => (
-            <input
-              key={field}
-              type="text"
-              value={book[field] || ''}
-              onChange={(e) => setBook({ ...book, [field]: e.target.value })}
-              placeholder={field}
-              className="w-full p-2 border border-gray-300 rounded"
-            />
-          ))}
-
-          <textarea
-            value={book.Description || ''}
-            onChange={(e) => setBook({ ...book, Description: e.target.value })}
-            placeholder="Description"
-            rows={6}
-            className="w-full p-2 border border-gray-300 rounded resize-y"
-          />
-
-          {thumbnailPreview ? (
-            <img src={thumbnailPreview} alt="Thumbnail Preview" className="w-24 h-auto rounded" />
-          ) : (
-            book.Thumbnail && (
-              <img src={book.Thumbnail} alt="thumbnail" className="w-24 h-auto rounded" />
-            )
-          )}
-
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => {
-              const file = e.target.files[0];
-              setThumbnailFile(file);
-              setThumbnailPreview(file ? URL.createObjectURL(file) : null);
-            }}
-            className="w-full p-2 border border-gray-300 rounded"
-          />
-
-          <label className="block mt-2 text-sm font-semibold">Location</label>
+      {bookInputs.map((entry, index) => (
+        <div key={index} className="flex gap-2 mb-2 items-center">
           <select
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            className="w-full p-2 border border-gray-300 rounded"
+            value={entry.type}
+            onChange={(e) => handleInputChange(index, 'type', e.target.value)}
+            className="p-2 border rounded w-1/3"
           >
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.LocationName}>{loc.LocationName}</option>
-            ))}
+            <option value="ISBN13">ISBN13</option>
+            <option value="CopyLocationID">CopyLocation</option>
           </select>
-
-          <label className="block text-sm font-semibold">Copy Location ID</label>
           <input
             type="text"
-            value={copyLocationID}
-            onChange={(e) => setCopyLocationID(e.target.value)}
-            placeholder="Enter Copy Location ID"
-            className="w-full p-2 border border-gray-300 rounded"
+            placeholder={`Book ${index + 1}`}
+            value={entry.value}
+            onChange={(e) => handleInputChange(index, 'value', e.target.value)}
+            className="flex-1 p-2 border border-gray-300 rounded"
           />
-
-          <label className="block text-sm font-semibold">Buy Price</label>
-          <input
-            type="number"
-            value={buyPrice}
-            onChange={(e) => setBuyPrice(e.target.value)}
-            placeholder="Enter Buy Price"
-            className="w-full p-2 border border-gray-300 rounded"
-          />
-
-          <label className="block text-sm font-semibold">Ask Price</label>
-          <input
-            type="number"
-            value={askPrice}
-            onChange={(e) => setAskPrice(e.target.value)}
-            placeholder="Enter Ask Price"
-            className="w-full p-2 border border-gray-300 rounded"
-          />
-
-          <div className="mt-2">
-            <p className="font-semibold">Tags:</p>
-            <div className="grid grid-cols-2 gap-2">
-              {tags.map((tag) => (
-                <label key={tag.id} className="text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedTags.includes(tag.TagName)}
-                    onChange={() => handleTagChange(tag.TagName)}
-                    className="mr-2"
-                  />
-                  {tag.TagName}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <p className="mt-2 text-sm">Next Copy Number: <strong>{copyNumber}</strong></p>
-
           <button
-            onClick={handleAdd}
-            className="w-full mt-4 bg-green-600 text-white py-2 rounded"
+            type="button"
+            onClick={() => startScanner(index)}
+            className="bg-blue-600 text-white px-2 py-1 rounded"
           >
-            Confirm & Add Book
+            📷
+          </button>
+        </div>
+      ))}
+
+      {activeScanIndex !== null && (
+        <div className="mb-4">
+          <div id={`scanner-${activeScanIndex}`} className="w-full h-64 bg-gray-100 rounded" />
+          <button
+            onClick={stopScanner}
+            className="mt-2 text-sm text-red-600 underline"
+          >
+            Stop Scanning
           </button>
         </div>
       )}
 
-      {message && <p className="mt-4 text-green-700 text-center font-semibold">{message}</p>}
+      <button
+        onClick={handleReview}
+        className="w-full mt-2 bg-purple-600 text-white py-2 rounded"
+      >
+        Review Books
+      </button>
 
-      {showScanner && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center">
-          <div className="bg-white p-4 rounded shadow max-w-sm w-full relative">
+      <button
+        onClick={() => {
+          setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
+          setMessage('');
+        }}
+        className="w-full mt-2 bg-gray-300 text-black py-2 rounded"
+      >
+        🔄 Reset Book Entries
+      </button>
+
+      {confirming && (
+        <div className="mt-4">
+          <h3 className="text-lg font-semibold text-gray-700">Confirm Issue:</h3>
+          {books.map((b, i) =>
+            b.error ? (
+              <p key={i} className="text-red-600 text-sm">❌ {b.error}</p>
+            ) : (
+              <div key={i} className="flex items-center gap-2 py-2 border-b">
+                {b.Thumbnail && <img src={b.Thumbnail} alt="thumb" className="w-12 h-auto rounded" />}
+                <div>
+                  <p className="text-sm font-bold">{b.Title}</p>
+                  <p className="text-xs text-gray-600">{b.Authors}</p>
+                  <p className="text-xs text-green-600">Copy number <strong>{b.CopyNumber}</strong> will be issued</p>
+                </div>
+              </div>
+            )
+          )}
+          {books.some(b => !b.error) && (
             <button
-              onClick={stopScan}
-              className="absolute top-1 right-2 text-red-600 text-xl"
-            >✖</button>
-            <p className="text-center text-sm font-medium mb-2">Scan ISBN Barcode</p>
-            <div id="isbn-scanner" className="w-full h-[300px]"></div>
-          </div>
+              onClick={handleConfirm}
+              className="w-full mt-4 bg-green-600 text-white py-2 rounded"
+            >
+              Confirm Issue
+            </button>
+          )}
         </div>
+      )}
+
+      {message && (
+        <p className="mt-4 text-center text-sm text-blue-700 font-semibold">{message}</p>
       )}
     </div>
   );

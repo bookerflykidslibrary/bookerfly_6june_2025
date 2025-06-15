@@ -198,6 +198,7 @@ export default function AdminAddBook() {
             { fps: 10, qrbox: 250 },
             (decodedText) => {
               setIsbn(decodedText);
+              stopScan();
             },
             (err) => {
               console.warn('Scan error', err);
