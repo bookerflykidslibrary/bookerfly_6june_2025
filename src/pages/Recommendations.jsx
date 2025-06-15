@@ -40,15 +40,14 @@ export default function IssueBooks() {
 
     const fetchSuggestions = async () => {
       const trimmed = customerSearch.trim();
-      const isNumeric = /^\d+$/.test(trimmed);
       const orClause = [
         `CustomerName.ilike.*${trimmed}*`,
-        `EmailID.ilike.*${trimmed}*`,
+        `EmailID.ilike.*${trimmed}*`
       ];
 
       let { data, error } = await supabase
         .from('customerinfo')
-        .select('CustomerID, Name, EmailID, ChildName, MobileNumber')
+        .select('CustomerID, CustomerName, EmailID')
         .or(orClause.join(','))
         .limit(10);
 
@@ -194,7 +193,7 @@ export default function IssueBooks() {
 
       <input
         type="text"
-        placeholder="Search by Name, Email, Child Name or Phone"
+        placeholder="Search by Name or Email"
         className="w-full p-2 mb-2 border border-gray-300 rounded"
         value={customerSearch}
         onChange={(e) => setCustomerSearch(e.target.value)}
@@ -208,14 +207,14 @@ export default function IssueBooks() {
               onClick={() => handleSelectCustomer(c.CustomerID)}
               className="p-2 hover:bg-blue-100 cursor-pointer"
             >
-              #{c.CustomerID} — {c.Name}, {c.EmailID}, {c.ChildName}, {c.MobileNumber}
+              #{c.CustomerID} — {c.CustomerName}, {c.EmailID}
             </li>
           ))}
         </ul>
       )}
 
       {selectedCustomer && (
-        <p className="text-sm mb-4">Selected Customer: <strong>{selectedCustomer.CustomerID}</strong> — {selectedCustomer.Name}</p>
+        <p className="text-sm mb-4">Selected Customer: <strong>{selectedCustomer.CustomerID}</strong> — {selectedCustomer.CustomerName}</p>
       )}
 
       {bookInputs.map((entry, index) => (
