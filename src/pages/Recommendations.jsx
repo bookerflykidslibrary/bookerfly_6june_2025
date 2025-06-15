@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import React, { useState, useEffect } from 'react';
 import supabase from '../utils/supabaseClient';
+import ScannerDialog from '../components/ScannerDialog';
 
 export default function IssueBooks() {
   const [bookInputs, setBookInputs] = useState(Array(10).fill({ value: '', type: 'ISBN13' }));
@@ -10,8 +10,8 @@ export default function IssueBooks() {
   const [message, setMessage] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminLocation, setAdminLocation] = useState('');
-  const [activeScanIndex, setActiveScanIndex] = useState(null);
-  const html5QrCodeRef = useRef(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [targetIndex, setTargetIndex] = useState(null);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -34,38 +34,6 @@ export default function IssueBooks() {
     const updated = [...bookInputs];
     updated[index] = { ...updated[index], [field]: value };
     setBookInputs(updated);
-  };
-
-  const handleScannedISBN = (isbn) => {
-    if (activeScanIndex !== null) {
-      const updated = [...bookInputs];
-      updated[activeScanIndex] = { value: isbn, type: updated[activeScanIndex].type };
-      setBookInputs(updated);
-      stopScanner();
-      setMessage(`✅ Scanned into box ${activeScanIndex + 1}`);
-    }
-  };
-
-  const startScanner = async (index) => {
-    stopScanner();
-    setActiveScanIndex(index);
-    html5QrCodeRef.current = new Html5Qrcode(`scanner-${index}`);
-    html5QrCodeRef.current.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      (decodedText) => handleScannedISBN(decodedText),
-      () => {}
-    );
-  };
-
-  const stopScanner = () => {
-    if (html5QrCodeRef.current) {
-      html5QrCodeRef.current.stop().then(() => {
-        html5QrCodeRef.current.clear();
-        html5QrCodeRef.current = null;
-        setActiveScanIndex(null);
-      });
-    }
   };
 
   const handleReview = async () => {
@@ -207,25 +175,26 @@ export default function IssueBooks() {
           />
           <button
             type="button"
-            onClick={() => startScanner(index)}
+            onClick={() => {
+              setTargetIndex(index);
+              setScannerOpen(true);
+            }}
             className="bg-blue-600 text-white px-2 py-1 rounded"
-          >
-            📷
-          </button>
+          >📷</button>
         </div>
       ))}
 
-      {activeScanIndex !== null && (
-        <div className="mb-4">
-          <div id={`scanner-${activeScanIndex}`} className="w-full h-64 bg-gray-100 rounded" />
-          <button
-            onClick={stopScanner}
-            className="mt-2 text-sm text-red-600 underline"
-          >
-            Stop Scanning
-          </button>
-        </div>
-      )}
+      <ScannerDialog
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={(text) => {
+          setBookInputs(prev => {
+            const updated = [...prev];
+            updated[targetIndex] = { ...updated[targetIndex], value: text };
+            return updated;
+          });
+        }}
+      />
 
       <button
         onClick={handleReview}
