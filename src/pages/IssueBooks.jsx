@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import React, { useState, useEffect } from 'react';
 import supabase from '../utils/supabaseClient';
+import ScannerDialog from '../components/ScannerDialog';
 
 export default function IssueBooks() {
   const [bookInputs, setBookInputs] = useState(Array(10).fill({ value: '', type: 'ISBN13' }));
@@ -10,8 +10,8 @@ export default function IssueBooks() {
   const [message, setMessage] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminLocation, setAdminLocation] = useState('');
-  const [scanning, setScanning] = useState(false);
-  const html5QrCodeRef = useRef(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [targetIndex, setTargetIndex] = useState(null);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -34,42 +34,6 @@ export default function IssueBooks() {
     const updated = [...bookInputs];
     updated[index] = { ...updated[index], [field]: value };
     setBookInputs(updated);
-  };
-
-  const handleScannedISBN = (isbn) => {
-    setBookInputs((prevInputs) => {
-      const indexToFill = prevInputs.findIndex(entry => entry.value.trim() === '');
-      if (indexToFill === -1) {
-        setMessage('All input boxes are full! Stopping scanner.');
-        stopScanner();
-        return prevInputs;
-      }
-      const updated = [...prevInputs];
-      updated[indexToFill] = { value: isbn, type: 'ISBN13' };
-      setMessage(`✅ Scanned ISBN: ${isbn}`);
-      return updated;
-    });
-  };
-
-  const startScanner = async () => {
-    if (scanning) return;
-    setScanning(true);
-    html5QrCodeRef.current = new Html5Qrcode("scanner");
-    html5QrCodeRef.current.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      (decodedText) => {
-        handleScannedISBN(decodedText);
-      },
-      (error) => {}
-    );
-  };
-
-  const stopScanner = () => {
-    html5QrCodeRef.current?.stop().then(() => {
-      html5QrCodeRef.current.clear();
-      setScanning(false);
-    });
   };
 
   const handleReview = async () => {
@@ -193,7 +157,7 @@ export default function IssueBooks() {
       />
 
       {bookInputs.map((entry, index) => (
-        <div key={index} className="flex gap-2 mb-2">
+        <div key={index} className="flex gap-2 mb-2 items-center">
           <select
             value={entry.type}
             onChange={(e) => handleInputChange(index, 'type', e.target.value)}
@@ -209,27 +173,28 @@ export default function IssueBooks() {
             onChange={(e) => handleInputChange(index, 'value', e.target.value)}
             className="flex-1 p-2 border border-gray-300 rounded"
           />
+          <button
+            type="button"
+            onClick={() => {
+              setTargetIndex(index);
+              setScannerOpen(true);
+            }}
+            className="bg-blue-600 text-white px-2 py-1 rounded"
+          >📷</button>
         </div>
       ))}
 
-      <button
-        onClick={startScanner}
-        className="w-full mb-2 bg-blue-600 text-white py-2 rounded"
-      >
-        📷 Start Scanner
-      </button>
-
-      {scanning && (
-        <div className="mb-4">
-          <div id="scanner" className="w-full h-64 bg-gray-100 rounded" />
-          <button
-            onClick={stopScanner}
-            className="mt-2 text-sm text-red-600 underline"
-          >
-            Stop Scanning
-          </button>
-        </div>
-      )}
+      <ScannerDialog
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={(text) => {
+          setBookInputs(prev => {
+            const updated = [...prev];
+            updated[targetIndex] = { ...updated[targetIndex], value: text };
+            return updated;
+          });
+        }}
+      />
 
       <button
         onClick={handleReview}
