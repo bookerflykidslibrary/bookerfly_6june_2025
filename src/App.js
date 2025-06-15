@@ -56,6 +56,7 @@ function AppRoutes() {
 
   return (
     <>
+      <Navbar/>
       <Routes>
         <Route path="/" element={<Catalog user={user} />} />
         <Route path="/catalog" element={<Catalog user={user} />} />
