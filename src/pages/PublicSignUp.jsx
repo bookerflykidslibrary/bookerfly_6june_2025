@@ -31,7 +31,7 @@ export default function PublicSignup() {
   };
 
   if (submitted) {
-    return <div className="p-6 text-green-700 text-lg">Thank you! Your signup request has been submitted.</div>;
+    return <div className="p-6 text-green-700 text-lg">Thank you! Your signup request has been submitted. We will contact you for further action. Thanks for your patience.</div>;
   }
 
   return (
