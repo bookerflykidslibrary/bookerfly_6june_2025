@@ -14,7 +14,6 @@ import SignupForm from './components/SignupForm';
 import AdminCustomerEditor from './pages/AdminCustomerEditor';
 import ReviewBooks from './pages/ReviewBooks'; // 👈 Import the new page
 import PublicSignup from './pages/PublicSignUp';
-import AdminSignUpRequests from './pages/AdminSignUpRequests';
 
 const supabase = createClient(
   process.env.REACT_APP_PUBLIC_SUPABASE_URL,
@@ -22,7 +21,7 @@ const supabase = createClient(
 );
 
 // Public routes
-const publicPaths = ['/', '/login', '/catalog', '/signup-request'];
+const publicPaths = ['/', '/login', '/catalog'];
 
 function AppRoutes() {
   const [loading, setLoading] = useState(true);
@@ -57,7 +56,7 @@ function AppRoutes() {
 
   return (
     <>
-      <Navbar/>
+      <Navbar user={user} />
       <Routes>
         <Route path="/" element={<Catalog user={user} />} />
         <Route path="/catalog" element={<Catalog user={user} />} />
@@ -73,12 +72,7 @@ function AppRoutes() {
           path="/admin/review-books"
           element={<ReviewBooks adminLocation={user?.user_metadata?.location || 'Unknown'} />}
         />
-        <Route
-          path="/admin/view-signup-requests"
-          element={user?.email === 'vkansal12@gmail.com'? <AdminSignUpRequests /> : <div className="p-4">Access denied</div>}
-        />
       </Routes>
-
     </>
   );
 }
