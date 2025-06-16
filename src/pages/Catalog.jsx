@@ -9,7 +9,7 @@ export default function Catalog({ user }) {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ minAge: '', maxAge: '', author: '', title: '' });
   const [appliedFilters, setAppliedFilters] = useState(null);
-  const [hiddenRead, setHiddenRead] = useState(null);
+  const [hiddenRead, setHiddenRead] = useState([]);
   const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
   const [addedRequests, setAddedRequests] = useState({});
@@ -19,10 +19,8 @@ export default function Catalog({ user }) {
   }, [user]);
 
   useEffect(() => {
-    if (user?.email && hiddenRead !== null) {
-      loadBooks();
-    }
-  }, [page, appliedFilters, hiddenRead]);
+    loadBooks();
+  }, [page, appliedFilters]);
 
   const fetchReadBooks = async (email) => {
     const { data: customer, error } = await supabase
@@ -31,22 +29,14 @@ export default function Catalog({ user }) {
       .eq('EmailID', email)
       .single();
 
-    if (error || !customer) {
-      setHiddenRead([]);
-      return;
-    }
+    if (error || !customer) return;
 
     const { data: readHistory } = await supabase
       .from('circulationhistory')
       .select('ISBN13')
-      .eq('userid', customer.userid);
+      .eq('MemberID', customer.userid);
 
-    const readISBNs = (readHistory || [])
-      .map(b => b.ISBN13?.trim().toLowerCase())
-      .filter(Boolean);
-
-    console.log('Books read by user:', readISBNs);
-    setHiddenRead(readISBNs);
+    if (readHistory) setHiddenRead(readHistory.map(b => b.ISBN13));
   };
 
   const applyFilters = () => {
@@ -138,23 +128,7 @@ export default function Catalog({ user }) {
       }
     }
 
-    const readSet = new Set(hiddenRead.map(id => id?.trim().toLowerCase()));
-
-    const filteredBooks = catalogBooks.filter(book => {
-      const isbn = book.ISBN13?.trim().toLowerCase();
-      return isbn && availabilityMap[book.ISBN13] && !readSet.has(isbn);
-    });
-
-    const droppedBooks = catalogBooks.filter(book => {
-      const isbn = book.ISBN13?.trim().toLowerCase();
-      return !isbn || !availabilityMap[book.ISBN13] || readSet.has(isbn);
-    });
-
-    console.log('Catalog before filter:', catalogBooks.length);
-    console.log('Books with available copies:', catalogBooks.filter(book => availabilityMap[book.ISBN13]).length);
-    console.log('Filtered catalog after hiding read:', filteredBooks.length);
-    console.log('Dropped books (filtered out):', droppedBooks.map(b => b.ISBN13));
-
+    const filteredBooks = catalogBooks.filter(book => availabilityMap[book.ISBN13] && !hiddenRead.includes(book.ISBN13));
     filteredBooks.forEach(book => book.minPrice = priceMap[book.ISBN13] ?? null);
 
     const randomized = filteredBooks.sort(() => 0.5 - Math.random());
@@ -206,14 +180,10 @@ export default function Catalog({ user }) {
               <div className="mt-2 text-xs text-gray-700">
                 <div className="flex flex-col sm:flex-row gap-2">
                   {book.minPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</span>}
-                  <a
-                    href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=123432543556`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-orange-600 hover:underline"
-                  >
-                    Buy on Amazon <FaExternalLinkAlt />
-                  </a>
+                 <a href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=123432543556`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-orange-600 hover:underline">
+                   Buy on Amazon <FaExternalLinkAlt />
+                 </a>
+
                 </div>
               </div>
             </div>
