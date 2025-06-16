@@ -127,40 +127,6 @@ export default function MyBooks() {
     fetchBookings(userId);
   };
 
-  const moveToBottom = async (isbn, copyNumber) => {
-    if (!userId) return;
-
-    const { data: allBookings, error } = await supabase
-      .from('circulationfuture')
-      .select('*')
-      .eq('userid', userId)
-      .order('SerialNumberOfIssue');
-
-    if (error || !allBookings || allBookings.length === 0) {
-      console.error('❌ Failed to fetch future bookings');
-      return;
-    }
-
-    const target = allBookings.find(b => b.ISBN13 === isbn && b.CopyNumber === copyNumber);
-    if (!target) return;
-
-    const reordered = [...allBookings.filter(b => b.CirculationID !== target.CirculationID), target];
-
-    for (let i = 0; i < reordered.length; i++) {
-      await supabase
-        .from('circulationfuture')
-        .update({ SerialNumberOfIssue: i + 1 })
-        .eq('CirculationID', reordered[i].CirculationID);
-    }
-
-    fetchBookings(userId);
-  };
-
-  const deleteBooking = async (circulationId) => {
-    await supabase.from('circulationfuture').delete().eq('CirculationID', circulationId);
-    fetchBookings(userId);
-  };
-
   return (
     <div className="p-4">
       <h2 className="text-xl font-bold mb-4">
@@ -170,21 +136,24 @@ export default function MyBooks() {
 
       <div className="grid gap-4">
         {bookings.map((b, idx) => (
-          <div key={idx} className="border p-4 rounded-md flex gap-4 items-center transition-transform duration-200">
+          <div key={idx} className="border p-4 rounded-md flex gap-4 items-center">
             <img src={b.catalog?.Thumbnail} alt="Thumbnail" className="w-16 h-20 object-cover" />
             <div className="flex-1">
               <div className="font-semibold">{b.catalog?.Title}</div>
               <div className="text-sm text-gray-600">{b.catalog?.Authors}</div>
               <div className="text-xs text-gray-500">Serial #: {b.SerialNumberOfIssue}</div>
             </div>
-            <div className="flex flex-col gap-2">
-              <button className="px-3 py-1 bg-blue-500 text-white rounded" onClick={() => moveUpQueue(b.ISBN13, b.CopyNumber)}>Move up</button>
-              <button className="px-3 py-1 bg-gray-500 text-white rounded" onClick={() => moveToBottom(b.ISBN13, b.CopyNumber)}>Move to bottom</button>
-              <button className="px-3 py-1 bg-red-600 text-white rounded" onClick={() => deleteBooking(b.CirculationID)}>Delete</button>
-            </div>
+            <button
+              className="px-3 py-1 bg-blue-500 text-white rounded"
+              onClick={() => moveUpQueue(b.ISBN13, b.CopyNumber)}
+            >
+              Move up the queue
+            </button>
           </div>
         ))}
-        {bookings.length === 0 && <p className="text-sm text-gray-500">No current bookings found.</p>}
+        {bookings.length === 0 && (
+          <p className="text-sm text-gray-500">No current bookings found.</p>
+        )}
       </div>
 
       <h2 className="text-xl font-bold mt-10 mb-4">Circulation History</h2>
@@ -196,11 +165,15 @@ export default function MyBooks() {
               <div className="font-semibold">{h.catalog?.Title}</div>
               <div className="text-sm text-gray-600">{h.catalog?.Authors}</div>
               <div className="text-xs text-gray-500">Booked: {h.BookingDate}</div>
-              {h.ReturnDate && <div className="text-xs text-green-600">Returned: {h.ReturnDate}</div>}
+              {h.ReturnDate && (
+                <div className="text-xs text-green-600">Returned: {h.ReturnDate}</div>
+              )}
             </div>
           </div>
         ))}
-        {history.length === 0 && <p className="text-sm text-gray-500">No previous history found.</p>}
+        {history.length === 0 && (
+          <p className="text-sm text-gray-500">No previous history found.</p>
+        )}
       </div>
     </div>
   );
