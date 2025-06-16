@@ -200,7 +200,7 @@ export default function IssueBooks() {
           .eq('CirculationID', remaining[i].CirculationID);
       }
 
-      setMessage('✅ Books issued successfully!');
+      setMessage('✅ Books issued successfully! Have fun!');
       setConfirming(false);
       setBooks([]);
       setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
