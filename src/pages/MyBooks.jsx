@@ -45,7 +45,6 @@ export default function MyBooks() {
 
   const ensureSerialOrder = async (records) => {
     const sorted = [...records].sort((a, b) => (a.SerialNumberOfIssue || 0) - (b.SerialNumberOfIssue || 0));
-
     let needsFix = false;
     const seen = new Set();
     const corrected = [];
@@ -65,7 +64,6 @@ export default function MyBooks() {
     }
 
     if (needsFix) {
-      console.log('🔁 Fixing serial numbers');
       for (const row of corrected) {
         await supabase
           .from('circulationfuture')
@@ -103,38 +101,27 @@ export default function MyBooks() {
   const moveUpQueue = async (isbn, copyNumber) => {
     if (!userId) return;
 
-    const { data: allBookings } = await supabase
+    const { data: allBookings, error } = await supabase
       .from('circulationfuture')
       .select('*')
       .eq('userid', userId)
-      .eq('ISBN13', isbn)
-      .eq('CopyNumber', copyNumber)
       .order('SerialNumberOfIssue');
 
-    if (!allBookings || allBookings.length === 0) return;
-
-    const updates = [];
-    let newSerial = 2;
-
-    for (const booking of allBookings) {
-      if (booking.userid === userId) {
-        updates.push({
-          ...booking,
-          SerialNumberOfIssue: 1
-        });
-      } else {
-        updates.push({
-          ...booking,
-          SerialNumberOfIssue: newSerial++
-        });
-      }
+    if (error || !allBookings || allBookings.length === 0) {
+      console.error('❌ Failed to fetch future bookings');
+      return;
     }
 
-    for (const b of updates) {
+    const target = allBookings.find(b => b.ISBN13 === isbn && b.CopyNumber === copyNumber);
+    if (!target) return;
+
+    const reordered = [target, ...allBookings.filter(b => b.CirculationID !== target.CirculationID)];
+
+    for (let i = 0; i < reordered.length; i++) {
       await supabase
         .from('circulationfuture')
-        .update({ SerialNumberOfIssue: b.SerialNumberOfIssue })
-        .eq('CirculationID', b.CirculationID);
+        .update({ SerialNumberOfIssue: i + 1 })
+        .eq('CirculationID', reordered[i].CirculationID);
     }
 
     fetchBookings(userId);
@@ -142,7 +129,11 @@ export default function MyBooks() {
 
   return (
     <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">Your future requests, will be sent to you based on availability in given order. Please click buttons below to change the priority of your bookings.</h2>
+      <h2 className="text-xl font-bold mb-4">
+        Your future requests, will be sent to you based on availability in given order.
+        Please click buttons below to change the priority of your bookings.
+      </h2>
+
       <div className="grid gap-4">
         {bookings.map((b, idx) => (
           <div key={idx} className="border p-4 rounded-md flex gap-4 items-center">
