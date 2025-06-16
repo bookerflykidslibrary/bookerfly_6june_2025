@@ -41,7 +41,10 @@ export default function Catalog({ user }) {
       .select('ISBN13')
       .eq('userid', customer.userid);
 
-    const readISBNs = readHistory?.map(b => b.ISBN13) || [];
+    const readISBNs = (readHistory || [])
+      .map(b => b.ISBN13?.trim().toLowerCase())
+      .filter(Boolean);
+
     console.log('Books read by user:', readISBNs);
     setHiddenRead(readISBNs);
   };
@@ -135,12 +138,22 @@ export default function Catalog({ user }) {
       }
     }
 
-    const filteredBooks = catalogBooks.filter(book =>
-      availabilityMap[book.ISBN13] && !hiddenRead.includes(book.ISBN13)
-    );
+    const readSet = new Set(hiddenRead.map(id => id?.trim().toLowerCase()));
+
+    const filteredBooks = catalogBooks.filter(book => {
+      const isbn = book.ISBN13?.trim().toLowerCase();
+      return isbn && availabilityMap[book.ISBN13] && !readSet.has(isbn);
+    });
+
+    const droppedBooks = catalogBooks.filter(book => {
+      const isbn = book.ISBN13?.trim().toLowerCase();
+      return !isbn || !availabilityMap[book.ISBN13] || readSet.has(isbn);
+    });
 
     console.log('Catalog before filter:', catalogBooks.length);
+    console.log('Books with available copies:', catalogBooks.filter(book => availabilityMap[book.ISBN13]).length);
     console.log('Filtered catalog after hiding read:', filteredBooks.length);
+    console.log('Dropped books (filtered out):', droppedBooks.map(b => b.ISBN13));
 
     filteredBooks.forEach(book => book.minPrice = priceMap[book.ISBN13] ?? null);
 
