@@ -12,7 +12,9 @@ export default function Navbar({ user }) {
       <div className="space-x-4">
         <Link to="/catalog" className="hover:underline">Catalog</Link>
         <Link to="/my-books" className="hover:underline">My Books</Link>
-        <Link to="/signup-request" className="hover:underline">Become a member</Link>
+        {!user && (
+         <Link to="/signup-request" className="hover:underline">Become a member</Link>
+        )}
 
         {user?.email === 'vkansal12@gmail.com' && (
           <>
