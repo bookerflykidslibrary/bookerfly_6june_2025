@@ -80,5 +80,14 @@ export default function IssueBooks() {
     }
   };
 
-  // ... (remaining JSX code unchanged)
+  return (
+    <div className="max-w-md mx-auto p-4">
+      {true && (
+        <p className="mt-4 text-center text-sm text-red-700 font-bold">
+          DEBUG MESSAGE: {message || 'No message'}
+        </p>
+      )}
+    </div>
+  );
+}
 }
