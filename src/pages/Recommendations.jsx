@@ -39,7 +39,7 @@ export default function Catalog({ user }) {
     const { data: readHistory } = await supabase
       .from('circulationhistory')
       .select('ISBN13')
-      .eq('MemberID', customer.userid);
+      .eq('userid', customer.userid);
 
     const readISBNs = readHistory?.map(b => b.ISBN13) || [];
     console.log('Books read by user:', readISBNs);
