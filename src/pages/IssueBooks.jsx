@@ -59,16 +59,38 @@ export default function IssueBooks() {
   }, [customerSearch]);
 
   const handleSelectCustomer = async (customerId) => {
-    const { data, error } = await supabase
+    const { data: customer, error } = await supabase
       .from('customerinfo')
       .select('*')
       .eq('CustomerID', customerId)
       .single();
 
     if (!error) {
-      setSelectedCustomer(data);
+      setSelectedCustomer(customer);
       setCustomerSearch('');
       setCustomerSuggestions([]);
+
+      const { data: plan } = await supabase
+        .from('membershipplans')
+        .select('NumberOfBooks')
+        .eq('PlanName', customer.SubscriptionPlan)
+        .single();
+
+      const bookLimit = parseInt(plan?.NumberOfBooks || '0', 10);
+
+      const { data: wishlist } = await supabase
+        .from('circulationfuture')
+        .select('ISBN13')
+        .eq('userid', customer.userid)
+        .order('SerialNumberOfIssue')
+        .limit(bookLimit);
+
+      const inputs = Array(10).fill({ value: '', type: 'ISBN13' });
+      wishlist?.forEach((w, i) => {
+        if (i < 10) inputs[i] = { value: w.ISBN13, type: 'ISBN13' };
+      });
+
+      setBookInputs(inputs);
     }
   };
 
@@ -93,57 +115,29 @@ export default function IssueBooks() {
     let allBooks = [];
 
     for (let entry of filtered) {
+      const isbn = entry.value;
       if (entry.type === 'ISBN13') {
         const { data: copy } = await supabase
           .from('copyinfo')
           .select('CopyID, ISBN13, CopyNumber')
-          .eq('ISBN13', entry.value)
+          .eq('ISBN13', isbn)
           .eq('CopyLocation', adminLocation)
           .eq('CopyBooked', false)
           .limit(1)
           .maybeSingle();
 
         if (!copy) {
-          allBooks.push({ error: `No available copy found for ${entry.value}` });
+          allBooks.push({ error: `No available copy for ISBN: ${isbn}` });
           continue;
         }
 
         const { data: book } = await supabase
           .from('catalog')
           .select('Title, Authors, ISBN13, Thumbnail')
-          .eq('ISBN13', copy.ISBN13)
+          .eq('ISBN13', isbn)
           .single();
 
-        if (book) {
-          allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
-        }
-
-      } else if (entry.type === 'CopyLocationID') {
-        const { data: copy } = await supabase
-          .from('copyinfo')
-          .select('CopyID, ISBN13, CopyBooked, CopyNumber')
-          .eq('CopyLocationID', entry.value)
-          .maybeSingle();
-
-        if (!copy) {
-          allBooks.push({ error: `Invalid CopyLocationID: ${entry.value}` });
-          continue;
-        }
-
-        if (copy.CopyBooked) {
-          allBooks.push({ error: `Copy ${entry.value} is already booked.` });
-          continue;
-        }
-
-        const { data: book } = await supabase
-          .from('catalog')
-          .select('Title, Authors, ISBN13, Thumbnail')
-          .eq('ISBN13', copy.ISBN13)
-          .single();
-
-        if (book) {
-          allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
-        }
+        allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
       }
     }
 
@@ -153,6 +147,11 @@ export default function IssueBooks() {
   };
 
   const handleConfirm = async () => {
+    if (!selectedCustomer?.userid) {
+      setMessage('❌ Cannot issue books — userid missing for selected customer.');
+      return;
+    }
+
     const today = new Date().toISOString();
     const validBooks = books.filter(b => !b.error);
 
@@ -163,34 +162,55 @@ export default function IssueBooks() {
       BookingDate: today,
       ReturnDate: null,
       MemberID: selectedCustomer.CustomerID,
+      userid: selectedCustomer.userid,
       Comment: '',
     }));
 
     const { error } = await supabase.from('circulationhistory').insert(records);
 
-    if (error) {
-      setMessage('Error issuing books: ' + error.message);
-    } else {
+    if (!error) {
       await supabase
         .from('copyinfo')
         .update({ CopyBooked: true })
         .in('CopyID', validBooks.map(b => b.CopyID));
 
-      setMessage('✅ Books issued successfully!');
+      const { data: wishlist } = await supabase
+        .from('circulationfuture')
+        .select('CirculationID, ISBN13')
+        .eq('userid', selectedCustomer.userid);
+
+      const issuedISBNs = validBooks.map(b => b.ISBN13);
+      const toDelete = wishlist.filter(w => issuedISBNs.includes(w.ISBN13));
+
+      await supabase
+        .from('circulationfuture')
+        .delete()
+        .in('CirculationID', toDelete.map(w => w.CirculationID));
+
+      const { data: remaining } = await supabase
+        .from('circulationfuture')
+        .select('CirculationID')
+        .eq('userid', selectedCustomer.userid)
+        .order('SerialNumberOfIssue');
+
+      for (let i = 0; i < remaining.length; i++) {
+        await supabase
+          .from('circulationfuture')
+          .update({ SerialNumberOfIssue: i + 1 })
+          .eq('CirculationID', remaining[i].CirculationID);
+      }
+
+      setMessage('✅ Books issued successfully! Have fun!');
       setConfirming(false);
       setBooks([]);
       setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
+    } else {
+      setMessage('Error issuing books: ' + error.message);
     }
   };
 
-  if (!isAdmin) {
-    return <div className="text-center p-4 text-red-600 font-bold">Access Denied: Admins Only</div>;
-  }
-
   return (
-    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8">
-      <h2 className="text-2xl font-bold text-center text-purple-700 mb-4">Issue Books</h2>
-
+    <div className="max-w-md mx-auto p-4">
       <input
         type="text"
         placeholder="Search by Name or Email"
@@ -198,7 +218,6 @@ export default function IssueBooks() {
         value={customerSearch}
         onChange={(e) => setCustomerSearch(e.target.value)}
       />
-
       {customerSuggestions.length > 0 && (
         <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded z-10 relative">
           {customerSuggestions.map((c) => (
@@ -211,10 +230,6 @@ export default function IssueBooks() {
             </li>
           ))}
         </ul>
-      )}
-
-      {selectedCustomer && (
-        <p className="text-sm mb-4">Selected Customer: <strong>{selectedCustomer.CustomerID}</strong> — {selectedCustomer.CustomerName}</p>
       )}
 
       {bookInputs.map((entry, index) => (
@@ -257,10 +272,7 @@ export default function IssueBooks() {
         }}
       />
 
-      <button
-        onClick={handleReview}
-        className="w-full mt-2 bg-purple-600 text-white py-2 rounded"
-      >
+      <button onClick={handleReview} className="w-full mt-2 bg-purple-600 text-white py-2 rounded">
         Review Books
       </button>
 
@@ -291,19 +303,19 @@ export default function IssueBooks() {
               </div>
             )
           )}
-          {books.some(b => !b.error) && (
-            <button
-              onClick={handleConfirm}
-              className="w-full mt-4 bg-green-600 text-white py-2 rounded"
-            >
-              Confirm Issue
-            </button>
-          )}
+          <button
+            onClick={handleConfirm}
+            className="w-full mt-4 bg-green-600 text-white py-2 rounded"
+          >
+            Confirm Issue
+          </button>
         </div>
       )}
 
       {message && (
-        <p className="mt-4 text-center text-sm text-blue-700 font-semibold">{message}</p>
+        <p className="mt-4 text-center text-sm text-blue-700 font-semibold">
+          DEBUG MESSAGE: {message || 'No message'}
+        </p>
       )}
     </div>
   );
