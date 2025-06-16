@@ -19,19 +19,23 @@ export default function IssueBooks() {
   // ... (existing code above unchanged)
 
   const handleConfirm = async () => {
+  if (!selectedCustomer?.userid) {
+    setMessage('❌ Cannot issue books — userid missing for selected customer.');
+    return;
+  }
     const today = new Date().toISOString();
     const validBooks = books.filter(b => !b.error);
 
     const records = validBooks.map(book => ({
-      LibraryBranch: adminLocation,
-      ISBN13: book.ISBN13,
-      CopyID: book.CopyID,
-      BookingDate: today,
-      ReturnDate: null,
-      MemberID: selectedCustomer.CustomerID,
-      userid: selectedCustomer.userid, // ✅ Inserted here
-      Comment: '',
-    }));
+  LibraryBranch: adminLocation,
+  ISBN13: book.ISBN13,
+  CopyID: book.CopyID,
+  BookingDate: today,
+  ReturnDate: null,
+  MemberID: selectedCustomer.CustomerID,
+  userid: selectedCustomer.userid || null, // ✅ fallback if missing
+  Comment: '',
+}));
 
     const { error } = await supabase.from('circulationhistory').insert(records);
 
