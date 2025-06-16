@@ -22,6 +22,7 @@ export default function MyBooks() {
     const { data, error } = await supabase
       .from('circulationfuture')
       .select(`
+        CirculationID,
         SerialNumberOfIssue,
         ISBN13,
         CopyNumber,
@@ -37,8 +38,43 @@ export default function MyBooks() {
     if (error) {
       console.error('Error fetching bookings:', error.message);
     } else {
-      setBookings(data);
+      const corrected = await ensureSerialOrder(data);
+      setBookings(corrected);
     }
+  };
+
+  const ensureSerialOrder = async (records) => {
+    const sorted = [...records].sort((a, b) => (a.SerialNumberOfIssue || 0) - (b.SerialNumberOfIssue || 0));
+
+    let needsFix = false;
+    const seen = new Set();
+    const corrected = [];
+
+    for (let i = 0; i < sorted.length; i++) {
+      let correctSerial = i + 1;
+      const current = sorted[i];
+      const currentSerial = current.SerialNumberOfIssue || 0;
+
+      if (seen.has(currentSerial) || currentSerial !== correctSerial) {
+        needsFix = true;
+        corrected.push({ ...current, SerialNumberOfIssue: correctSerial });
+      } else {
+        corrected.push(current);
+      }
+      seen.add(correctSerial);
+    }
+
+    if (needsFix) {
+      console.log('🔁 Fixing serial numbers');
+      for (const row of corrected) {
+        await supabase
+          .from('circulationfuture')
+          .update({ SerialNumberOfIssue: row.SerialNumberOfIssue })
+          .eq('CirculationID', row.CirculationID);
+      }
+    }
+
+    return corrected;
   };
 
   const fetchHistory = async (uid) => {
@@ -94,14 +130,14 @@ export default function MyBooks() {
       }
     }
 
-    const { error } = await supabase.rpc('bulk_update_serials', {
-      updates: updates.map(b => ({
-        circulationid: b.CirculationID,
-        serialnumber: b.SerialNumberOfIssue
-      }))
-    });
+    for (const b of updates) {
+      await supabase
+        .from('circulationfuture')
+        .update({ SerialNumberOfIssue: b.SerialNumberOfIssue })
+        .eq('CirculationID', b.CirculationID);
+    }
 
-    if (!error) fetchBookings(userId);
+    fetchBookings(userId);
   };
 
   return (
