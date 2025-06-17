@@ -1,3 +1,4 @@
+// Updated MyBooks.jsx with fixed history join using foreign key alias
 import React, { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
@@ -82,7 +83,7 @@ export default function MyBooks() {
         BookingDate,
         ReturnDate,
         ISBN13,
-        catalog:ISBN13 (
+        catalog:catalog_ISBN13_fkey (
           Title,
           Authors,
           Thumbnail
