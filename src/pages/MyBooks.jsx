@@ -83,7 +83,7 @@ export default function MyBooks() {
         BookingDate,
         ReturnDate,
         ISBN13,
-        catalog:catalog_ISBN13_fkey (
+        catalog:circulationhistory_ISBN13_fkey (
           Title,
           Authors,
           Thumbnail
