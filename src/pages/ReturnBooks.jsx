@@ -1,195 +1,161 @@
+// ReturnBooks.jsx — Admin-only page to return books
 import React, { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
 export default function ReturnBooks() {
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminLocation, setAdminLocation] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [customerSuggestions, setCustomerSuggestions] = useState([]);
+  const [suggestions, setSuggestions] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [booksToReturn, setBooksToReturn] = useState([]);
-  const [selectedBookIds, setSelectedBookIds] = useState(new Set());
+  const [books, setBooks] = useState([]);
+  const [checked, setChecked] = useState({});
   const [selectAll, setSelectAll] = useState(false);
   const [message, setMessage] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  // Check if logged-in user is admin
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
       const { data: admin } = await supabase
         .from('admininfo')
-        .select('AdminLocation')
+        .select('*')
         .eq('AdminID', user.id)
         .single();
-
-      if (admin) {
-        setIsAdmin(true);
-        setAdminLocation(admin.AdminLocation);
-      }
+      setIsAdmin(!!admin);
     };
     checkAdmin();
   }, []);
 
-  // Autocomplete customer
   useEffect(() => {
-    if (customerSearch.length < 2) return setCustomerSuggestions([]);
-
-    const search = async () => {
-      const trimmed = customerSearch.trim();
-      const { data } = await supabase
+    if (customerSearch.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const fetchSuggestions = async () => {
+      const { data, error } = await supabase
         .from('customerinfo')
-        .select('CustomerID, CustomerName, EmailID, ContactNumber')
-        .or([
-          `CustomerName.ilike.*${trimmed}*`,
-          `EmailID.ilike.*${trimmed}*`,
-          `ContactNumber.ilike.*${trimmed}*`
-        ].join(','))
+        .select('CustomerName, EmailID, ContactNo, userid')
+        .or(`CustomerName.ilike.*${customerSearch}*,EmailID.ilike.*${customerSearch}*,ContactNo.ilike.*${customerSearch}*`)
         .limit(10);
-
-      setCustomerSuggestions(data || []);
+      if (!error) setSuggestions(data);
     };
-
-    search();
+    fetchSuggestions();
   }, [customerSearch]);
 
-  // Load books for selected customer
-  const handleSelectCustomer = async (customer) => {
-    setSelectedCustomer(customer);
+  const handleSelectCustomer = async (cust) => {
+    setSelectedCustomer(cust);
     setCustomerSearch('');
-    setCustomerSuggestions([]);
-
-    const { data } = await supabase
+    setSuggestions([]);
+    setMessage('');
+    const { data, error } = await supabase
       .from('circulationhistory')
-      .select(`
-        BookingID,
-        ISBN13,
-        BookingDate,
-        ReturnDate,
-        catalog:ISBN13 (Title, Authors, Thumbnail)
-      `)
-      .eq('MemberID', customer.CustomerID)
+      .select(`BookingID, ISBN13, BookingDate, catalog:ISBN13 (Title, Thumbnail)`)
+      .eq('userid', cust.userid)
       .is('ReturnDate', null);
-
-    setBooksToReturn(data || []);
-    setSelectedBookIds(new Set());
-    setSelectAll(false);
-  };
-
-  const handleToggleBook = (id) => {
-    const updated = new Set(selectedBookIds);
-    updated.has(id) ? updated.delete(id) : updated.add(id);
-    setSelectedBookIds(updated);
-  };
-
-  const handleSelectAll = () => {
-    if (selectAll) {
-      setSelectedBookIds(new Set());
-    } else {
-      setSelectedBookIds(new Set(booksToReturn.map(b => b.BookingID)));
+    if (!error) {
+      setBooks(data);
+      const checkState = {};
+      data.forEach(b => checkState[b.BookingID] = false);
+      setChecked(checkState);
     }
+  };
+
+  const toggleAll = () => {
+    const newState = {};
+    books.forEach(b => newState[b.BookingID] = !selectAll);
+    setChecked(newState);
     setSelectAll(!selectAll);
   };
 
-  const handleReturnBooks = async () => {
-    const today = new Date().toISOString();
-    const idsToUpdate = Array.from(selectedBookIds);
+  const toggleOne = (id) => {
+    setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
-    if (idsToUpdate.length === 0) return;
+  const handleReturn = async () => {
+    const today = new Date().toISOString();
+    const selected = Object.entries(checked)
+      .filter(([_, v]) => v)
+      .map(([k]) => k);
+
+    if (selected.length === 0) {
+      setMessage('No books selected.');
+      return;
+    }
 
     const { error } = await supabase
       .from('circulationhistory')
       .update({ ReturnDate: today })
-      .in('BookingID', idsToUpdate);
+      .in('BookingID', selected);
 
     if (!error) {
       setMessage(`✅ Books returned for ${selectedCustomer.CustomerName}`);
-      setBooksToReturn(booksToReturn.filter(b => !selectedBookIds.has(b.BookingID)));
-      setSelectedBookIds(new Set());
-      setSelectAll(false);
+      setBooks(books.filter(b => !selected.includes(b.BookingID)));
     } else {
-      setMessage('❌ Error returning books: ' + error.message);
+      setMessage('❌ Error returning books.');
     }
   };
 
   if (!isAdmin) return <div className="p-4 text-red-600 font-bold">Access Denied: Admins Only</div>;
 
   return (
-    <div className="max-w-3xl mx-auto p-4">
-      <h1 className="text-2xl font-bold text-purple-700 mb-4">Return Books</h1>
+    <div className="max-w-xl mx-auto p-4">
+      <h2 className="text-2xl font-bold text-purple-700 mb-4">Return Books</h2>
 
       <input
         type="text"
         value={customerSearch}
         onChange={(e) => setCustomerSearch(e.target.value)}
-        placeholder="Search by Name, Email or Phone"
-        className="w-full border p-2 rounded mb-2"
+        placeholder="Search Name / Email / Phone"
+        className="w-full border p-2 rounded"
       />
 
-      {customerSuggestions.length > 0 && (
-        <ul className="bg-white border rounded shadow mb-4">
-          {customerSuggestions.map((c) => (
+      {suggestions.length > 0 && (
+        <ul className="bg-white border rounded mt-1 max-h-48 overflow-auto">
+          {suggestions.map((s) => (
             <li
-              key={c.CustomerID}
-              onClick={() => handleSelectCustomer(c)}
-              className="p-2 cursor-pointer hover:bg-blue-100"
+              key={s.userid}
+              onClick={() => handleSelectCustomer(s)}
+              className="p-2 hover:bg-blue-100 cursor-pointer"
             >
-              {c.CustomerName}, {c.EmailID}, {c.ContactNumber}
+              {s.CustomerName}, {s.EmailID}, {s.ContactNo}
             </li>
           ))}
         </ul>
       )}
 
       {selectedCustomer && (
-        <>
-          <h2 className="text-lg font-semibold mb-2">
-            Books issued to: <span className="text-blue-700">{selectedCustomer.CustomerName}</span>
-          </h2>
-
-          {booksToReturn.length > 0 ? (
+        <div className="mt-6">
+          <h3 className="font-semibold text-gray-700 mb-2">Books with {selectedCustomer.CustomerName}</h3>
+          {books.length === 0 ? (
+            <p className="text-sm text-gray-500">No pending books to return.</p>
+          ) : (
             <>
-              <label className="flex items-center mb-2">
-                <input
-                  type="checkbox"
-                  checked={selectAll}
-                  onChange={handleSelectAll}
-                  className="mr-2"
-                />
-                Select All
-              </label>
-
-              {booksToReturn.map((book) => (
-                <div key={book.BookingID} className="flex items-center border p-2 rounded mb-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedBookIds.has(book.BookingID)}
-                    onChange={() => handleToggleBook(book.BookingID)}
-                    className="mr-2"
-                  />
-                  <img src={book.catalog?.Thumbnail} alt="thumb" className="w-12 h-16 mr-3 rounded" />
+              <div className="flex items-center mb-2">
+                <input type="checkbox" checked={selectAll} onChange={toggleAll} className="mr-2" />
+                <label className="text-sm">Select All</label>
+              </div>
+              {books.map((b) => (
+                <div key={b.BookingID} className="flex items-center border p-2 rounded mb-2">
+                  <input type="checkbox" checked={checked[b.BookingID] || false} onChange={() => toggleOne(b.BookingID)} className="mr-2" />
+                  <img src={b.catalog?.Thumbnail} alt="thumb" className="w-12 h-16 object-cover rounded mr-3" />
                   <div>
-                    <p className="font-semibold">{book.catalog?.Title}</p>
-                    <p className="text-sm text-gray-600">{book.catalog?.Authors}</p>
-                    <p className="text-xs text-gray-500">Issued: {new Date(book.BookingDate).toLocaleDateString()}</p>
+                    <p className="font-medium text-sm">{b.catalog?.Title}</p>
+                    <p className="text-xs text-gray-500">Booked: {b.BookingDate?.slice(0, 10)}</p>
                   </div>
                 </div>
               ))}
-
               <button
-                className="mt-4 bg-green-600 text-white px-4 py-2 rounded"
-                onClick={handleReturnBooks}
+                onClick={handleReturn}
+                className="mt-3 w-full bg-green-600 text-white py-2 rounded"
               >
-                ✅ Return Selected Books
+                Return Books
               </button>
             </>
-          ) : (
-            <p className="text-sm text-gray-500">No books pending return for this user.</p>
           )}
-        </>
+        </div>
       )}
 
-      {message && <p className="mt-4 text-green-700 font-medium">{message}</p>}
+      {message && <p className="mt-4 text-center text-sm text-blue-700 font-semibold">{message}</p>}
     </div>
   );
 }
