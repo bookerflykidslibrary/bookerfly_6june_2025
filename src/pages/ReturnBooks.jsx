@@ -54,24 +54,36 @@ export default function ReturnBooks() {
     setMessage('');
     setSelectedBooks({});
 
-    const { data, error } = await supabase
-      .from('circulationhistory')
-      .select(`
-        BookingID,
-        ISBN13,
-        CopyID,
-        BookingDate,
-        ReturnDate,
-        catalog:ISBN13(Title, Thumbnail)
-      `)
-      .eq('userid', user.userid)
-      .is('ReturnDate', null);
+    try {
+      const { data, error } = await supabase
+        .from('circulationhistory')
+        .select(`
+          BookingID,
+          ISBN13,
+          CopyID,
+          BookingDate,
+          ReturnDate,
+          userid,
+          catalog:ISBN13 (
+            Title,
+            Thumbnail
+          )
+        `)
+        .eq('userid', user.userid)
+        .is('ReturnDate', null);
 
-    console.log('📦 Raw books to return:', data, 'Error:', error);
+      console.log('📦 Supabase Query Result');
+      console.log('📚 data:', data);
+      console.log('❌ error:', error);
+      console.log('🔢 count of rows:', data?.length);
 
-    if (!error && data?.length > 0) {
-      setBooksToReturn(data);
-    } else {
+      if (!error && data?.length > 0) {
+        setBooksToReturn(data);
+      } else {
+        setBooksToReturn([]);
+      }
+    } catch (err) {
+      console.error('🚨 Caught exception while fetching books:', err);
       setBooksToReturn([]);
     }
   };
@@ -115,7 +127,6 @@ export default function ReturnBooks() {
   return (
     <div className="max-w-xl mx-auto p-4">
       <h1 className="text-xl font-bold mb-4">Return Books</h1>
-
       <input
         type="text"
         placeholder="Search by Name, Email or Phone"
@@ -141,7 +152,6 @@ export default function ReturnBooks() {
       {selectedUser && (
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-2">Books with {selectedUser.CustomerName}</h2>
-
           {booksToReturn.length === 0 ? (
             <p>No books to return.</p>
           ) : (
@@ -150,7 +160,6 @@ export default function ReturnBooks() {
                 <input type="checkbox" onChange={toggleAll} checked={booksToReturn.every(b => selectedBooks[b.BookingID])} />
                 <label className="ml-2 text-sm">Select All</label>
               </div>
-
               {booksToReturn.map((b) => (
                 <div key={b.BookingID} className="border p-3 rounded flex items-center gap-3">
                   <input
@@ -167,7 +176,6 @@ export default function ReturnBooks() {
                   </div>
                 </div>
               ))}
-
               <button
                 onClick={handleReturn}
                 className="mt-4 w-full bg-green-600 text-white py-2 rounded"
