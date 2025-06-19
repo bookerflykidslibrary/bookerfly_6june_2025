@@ -10,22 +10,20 @@ export default function ReturnBooks() {
   const [message, setMessage] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // ✅ Check admin status on load
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data: admin } = await supabase
+      const { data: admin, error } = await supabase
         .from('admininfo')
         .select('*')
         .eq('AdminID', user.id)
         .single();
-      if (admin) setIsAdmin(true);
+      if (admin && !error) setIsAdmin(true);
     };
     checkAdmin();
   }, []);
 
-  // ✅ Live suggestions
   useEffect(() => {
     if (search.trim().length < 1) {
       setSuggestions([]);
@@ -41,19 +39,21 @@ export default function ReturnBooks() {
           `CustomerName.ilike.%${trimmed}%,EmailID.ilike.%${trimmed}%,ContactNo.ilike.%${trimmed}%`
         )
         .limit(10);
-      if (!error) setSuggestions(data || []);
+
+      if (error) console.error('❌ Error fetching suggestions:', error.message);
+      setSuggestions(data || []);
     };
 
     fetchSuggestions();
   }, [search]);
 
-  // ✅ When admin selects a user
   const handleSelectUser = async (user) => {
     setSelectedUser(user);
     setSearch('');
     setSuggestions([]);
     setMessage('');
     setSelectedBooks({});
+    setBooksToReturn([]);
 
     const { data, error } = await supabase
       .from('circulationhistory')
@@ -71,20 +71,17 @@ export default function ReturnBooks() {
       .eq('userid', user.userid)
       .is('ReturnDate', null);
 
-    if (!error) {
-      setBooksToReturn(data || []);
-    } else {
-      console.error('Fetch error:', error.message);
-      setBooksToReturn([]);
+    if (error) {
+      console.error('❌ Error loading books:', error.message);
     }
+
+    setBooksToReturn(data || []);
   };
 
-  // ✅ Toggle single checkbox
   const toggleBook = (id) => {
     setSelectedBooks(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // ✅ Toggle "Select All"
   const toggleAll = () => {
     const allSelected = booksToReturn.every(book => selectedBooks[book.BookingID]);
     const newSelected = {};
@@ -94,19 +91,11 @@ export default function ReturnBooks() {
     setSelectedBooks(newSelected);
   };
 
-  // ✅ On confirm return
   const handleReturn = async () => {
-    const ids = booksToReturn
-      .filter(b => selectedBooks[b.BookingID])
-      .map(b => b.BookingID);
-
-    if (ids.length === 0) {
-      setMessage('⚠️ Please select at least one book.');
-      return;
-    }
+    const ids = booksToReturn.filter(b => selectedBooks[b.BookingID]).map(b => b.BookingID);
+    if (ids.length === 0) return;
 
     const today = new Date().toISOString();
-
     const { error } = await supabase
       .from('circulationhistory')
       .update({ ReturnDate: today })
@@ -117,28 +106,29 @@ export default function ReturnBooks() {
       setBooksToReturn(prev => prev.filter(b => !ids.includes(b.BookingID)));
       setSelectedBooks({});
     } else {
+      console.error('❌ Return error:', error.message);
       setMessage('❌ Error returning books: ' + error.message);
     }
   };
 
   if (!isAdmin) {
-    return <div className="p-4 text-red-600 font-bold">Access Denied</div>;
+    return <div className="p-4 text-red-600 font-bold">Access denied</div>;
   }
 
   return (
     <div className="max-w-xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4 text-purple-700">Return Books</h1>
+      <h1 className="text-xl font-bold mb-4">Return Books</h1>
 
       <input
         type="text"
+        placeholder="Search by Name, Email or Phone"
+        className="border p-2 rounded w-full"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by Name, Email or Phone"
-        className="w-full p-2 border rounded mb-2"
       />
 
       {suggestions.length > 0 && (
-        <ul className="border rounded shadow bg-white max-h-48 overflow-auto z-10 relative">
+        <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded z-10 relative">
           {suggestions.map((c, idx) => (
             <li
               key={idx}
@@ -154,7 +144,6 @@ export default function ReturnBooks() {
       {selectedUser && (
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-2">Books with {selectedUser.CustomerName}</h2>
-
           {booksToReturn.length === 0 ? (
             <p>No books to return.</p>
           ) : (
@@ -162,29 +151,31 @@ export default function ReturnBooks() {
               <div className="flex items-center mb-2">
                 <input
                   type="checkbox"
-                  checked={booksToReturn.every(b => selectedBooks[b.BookingID])}
                   onChange={toggleAll}
+                  checked={booksToReturn.every(b => selectedBooks[b.BookingID])}
                 />
-                <label className="ml-2 text-sm font-medium">Select All</label>
+                <label className="ml-2 text-sm">Select All</label>
               </div>
-
               {booksToReturn.map((b) => (
                 <div key={b.BookingID} className="border p-3 rounded flex items-center gap-3">
                   <input
                     type="checkbox"
-                    checked={!!selectedBooks[b.BookingID]}
+                    checked={selectedBooks[b.BookingID] || false}
                     onChange={() => toggleBook(b.BookingID)}
                   />
                   {b.catalog?.Thumbnail && (
-                    <img src={b.catalog.Thumbnail} alt="thumb" className="w-12 h-16 object-cover" />
+                    <img
+                      src={b.catalog.Thumbnail}
+                      alt="thumb"
+                      className="w-12 h-16 object-cover rounded"
+                    />
                   )}
                   <div>
-                    <p className="text-sm font-semibold">{b.catalog?.Title}</p>
+                    <p className="text-sm font-semibold">{b.catalog?.Title || 'Untitled Book'}</p>
                     <p className="text-xs text-gray-600">Issued on: {b.BookingDate?.slice(0, 10)}</p>
                   </div>
                 </div>
               ))}
-
               <button
                 onClick={handleReturn}
                 className="mt-4 w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
@@ -196,9 +187,7 @@ export default function ReturnBooks() {
         </div>
       )}
 
-      {message && (
-        <p className="mt-6 text-center font-semibold text-blue-700">{message}</p>
-      )}
+      {message && <p className="mt-4 text-center text-blue-700 font-semibold">{message}</p>}
     </div>
   );
 }
