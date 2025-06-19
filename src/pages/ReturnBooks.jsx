@@ -47,45 +47,35 @@ export default function ReturnBooks() {
   }, [search]);
 
   const handleSelectUser = async (user) => {
-    console.log('✅ Selected user:', user);
     setSelectedUser(user);
     setSearch('');
     setSuggestions([]);
     setMessage('');
     setSelectedBooks({});
+    console.log("✅ Selected user:", user);
 
-    try {
-      const { data, error } = await supabase
-        .from('circulationhistory')
-        .select(`
-          BookingID,
-          ISBN13,
-          CopyID,
-          BookingDate,
-          ReturnDate,
-          userid,
-          catalog:ISBN13 (
-            Title,
-            Thumbnail
-          )
-        `)
-        .eq('userid', user.userid)
-        .is('ReturnDate', null);
+    const { data, error } = await supabase
+      .from('circulationhistory')
+      .select(`
+        BookingID,
+        ISBN13,
+        CopyID,
+        BookingDate,
+        ReturnDate,
+        catalog:circulationhistory_ISBN13_fkey (
+          Title,
+          Thumbnail
+        )
+      `)
+      .eq('userid', user.userid)
+      .is('ReturnDate', null);
 
-      console.log('📦 Supabase Query Result');
-      console.log('📚 data:', data);
-      console.log('❌ error:', error);
-      console.log('🔢 count of rows:', data?.length);
+    console.log("📦 Supabase Query Result");
+    console.log("📚 data:", data);
+    console.log("❌ error:", error);
+    console.log("🔢 count of rows:", data?.length);
 
-      if (!error && data?.length > 0) {
-        setBooksToReturn(data);
-      } else {
-        setBooksToReturn([]);
-      }
-    } catch (err) {
-      console.error('🚨 Caught exception while fetching books:', err);
-      setBooksToReturn([]);
-    }
+    setBooksToReturn(data || []);
   };
 
   const toggleBook = (id) => {
@@ -153,11 +143,15 @@ export default function ReturnBooks() {
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-2">Books with {selectedUser.CustomerName}</h2>
           {booksToReturn.length === 0 ? (
-            <p>No books to return.</p>
+            <p className="text-sm text-gray-600">No books to return.</p>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center">
-                <input type="checkbox" onChange={toggleAll} checked={booksToReturn.every(b => selectedBooks[b.BookingID])} />
+                <input
+                  type="checkbox"
+                  onChange={toggleAll}
+                  checked={booksToReturn.every(b => selectedBooks[b.BookingID])}
+                />
                 <label className="ml-2 text-sm">Select All</label>
               </div>
               {booksToReturn.map((b) => (
