@@ -13,21 +13,13 @@ export default function ReturnBooks() {
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      console.log('👤 Logged-in user:', user);
       if (!user) return;
-
-      const { data: admin, error } = await supabase
+      const { data: admin } = await supabase
         .from('admininfo')
         .select('*')
         .eq('AdminID', user.id)
         .single();
-
-      if (admin && !error) {
-        setIsAdmin(true);
-        console.log('✅ Admin verified');
-      } else {
-        console.warn('🚫 Not an admin:', error?.message);
-      }
+      if (admin) setIsAdmin(true);
     };
     checkAdmin();
   }, []);
@@ -40,20 +32,13 @@ export default function ReturnBooks() {
 
     const fetchSuggestions = async () => {
       const trimmed = search.trim();
-      console.log(`🔍 Searching for: ${trimmed}`);
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('customerinfo')
         .select('CustomerName, EmailID, ContactNo, userid')
         .or(
           `CustomerName.ilike.%${trimmed}%,EmailID.ilike.%${trimmed}%,ContactNo.ilike.%${trimmed}%`
         )
         .limit(10);
-
-      if (error) {
-        console.error('❌ Suggestion fetch error:', error.message);
-      } else {
-        console.log(`✅ Found ${data.length} customer matches`);
-      }
 
       setSuggestions(data || []);
     };
@@ -67,32 +52,31 @@ export default function ReturnBooks() {
     setSuggestions([]);
     setMessage('');
     setSelectedBooks({});
-    setBooksToReturn([]);
-    console.log('👤 Selected user:', user);
 
     const { data, error } = await supabase
       .from('circulationhistory')
-      .select(`
-        BookingID,
-        ISBN13,
-        CopyID,
-        BookingDate,
-        ReturnDate,
-        catalog:ISBN13 (
-          Title,
-          Thumbnail
-        )
-      `)
+      .select(`BookingID, ISBN13, CopyID, BookingDate, ReturnDate`)
       .eq('userid', user.userid)
       .is('ReturnDate', null);
 
-    if (error) {
-      console.error('❌ Error fetching circulation history:', error.message);
-    } else {
-      console.log(`📚 Books to return: ${data.length}`, data);
-    }
+    console.log('Selected user:', user);
+    console.log(`📚 Books to return (raw): ${data?.length}`, data);
 
-    setBooksToReturn(data || []);
+    // Fetch book details from catalog manually
+    const enriched = await Promise.all((data || []).map(async (book) => {
+      const { data: catalogData } = await supabase
+        .from('catalog')
+        .select('Title, Thumbnail')
+        .eq('ISBN13', book.ISBN13)
+        .maybeSingle();
+
+      return {
+        ...book,
+        catalog: catalogData || {},
+      };
+    }));
+
+    setBooksToReturn(enriched);
   };
 
   const toggleBook = (id) => {
@@ -110,7 +94,6 @@ export default function ReturnBooks() {
 
   const handleReturn = async () => {
     const ids = booksToReturn.filter(b => selectedBooks[b.BookingID]).map(b => b.BookingID);
-    console.log('📝 Returning BookingIDs:', ids);
     if (ids.length === 0) return;
 
     const today = new Date().toISOString();
@@ -123,9 +106,7 @@ export default function ReturnBooks() {
       setMessage(`✅ Books returned for ${selectedUser.CustomerName}`);
       setBooksToReturn(prev => prev.filter(b => !ids.includes(b.BookingID)));
       setSelectedBooks({});
-      console.log('✅ Successfully returned books');
     } else {
-      console.error('❌ Return error:', error.message);
       setMessage('❌ Error returning books: ' + error.message);
     }
   };
@@ -137,7 +118,6 @@ export default function ReturnBooks() {
   return (
     <div className="max-w-xl mx-auto p-4">
       <h1 className="text-xl font-bold mb-4">Return Books</h1>
-
       <input
         type="text"
         placeholder="Search by Name, Email or Phone"
@@ -167,12 +147,8 @@ export default function ReturnBooks() {
             <p>No books to return.</p>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center mb-2">
-                <input
-                  type="checkbox"
-                  onChange={toggleAll}
-                  checked={booksToReturn.every(b => selectedBooks[b.BookingID])}
-                />
+              <div className="flex items-center">
+                <input type="checkbox" onChange={toggleAll} checked={booksToReturn.every(b => selectedBooks[b.BookingID])} />
                 <label className="ml-2 text-sm">Select All</label>
               </div>
               {booksToReturn.map((b) => (
@@ -183,21 +159,17 @@ export default function ReturnBooks() {
                     onChange={() => toggleBook(b.BookingID)}
                   />
                   {b.catalog?.Thumbnail && (
-                    <img
-                      src={b.catalog.Thumbnail}
-                      alt="thumb"
-                      className="w-12 h-16 object-cover rounded"
-                    />
+                    <img src={b.catalog.Thumbnail} alt="thumb" className="w-12 h-16 object-cover" />
                   )}
                   <div>
-                    <p className="text-sm font-semibold">{b.catalog?.Title || 'Untitled Book'}</p>
+                    <p className="text-sm font-semibold">{b.catalog?.Title}</p>
                     <p className="text-xs text-gray-600">Issued on: {b.BookingDate?.slice(0, 10)}</p>
                   </div>
                 </div>
               ))}
               <button
                 onClick={handleReturn}
-                className="mt-4 w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
+                className="mt-4 w-full bg-green-600 text-white py-2 rounded"
               >
                 Return Books
               </button>
