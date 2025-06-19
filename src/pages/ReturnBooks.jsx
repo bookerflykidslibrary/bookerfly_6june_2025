@@ -10,6 +10,7 @@ export default function ReturnBooks() {
   const [message, setMessage] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // ✅ Check admin status on load
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -24,6 +25,7 @@ export default function ReturnBooks() {
     checkAdmin();
   }, []);
 
+  // ✅ Live suggestions
   useEffect(() => {
     if (search.trim().length < 1) {
       setSuggestions([]);
@@ -32,17 +34,20 @@ export default function ReturnBooks() {
 
     const fetchSuggestions = async () => {
       const trimmed = search.trim();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('customerinfo')
         .select('CustomerName, EmailID, ContactNo, userid')
-        .or(`CustomerName.ilike.%${trimmed}%,EmailID.ilike.%${trimmed}%,ContactNo.ilike.%${trimmed}%`)
+        .or(
+          `CustomerName.ilike.%${trimmed}%,EmailID.ilike.%${trimmed}%,ContactNo.ilike.%${trimmed}%`
+        )
         .limit(10);
-      setSuggestions(data || []);
+      if (!error) setSuggestions(data || []);
     };
 
     fetchSuggestions();
   }, [search]);
 
+  // ✅ When admin selects a user
   const handleSelectUser = async (user) => {
     setSelectedUser(user);
     setSearch('');
@@ -57,6 +62,7 @@ export default function ReturnBooks() {
         ISBN13,
         CopyID,
         BookingDate,
+        ReturnDate,
         catalog:ISBN13 (
           Title,
           Thumbnail
@@ -65,20 +71,22 @@ export default function ReturnBooks() {
       .eq('userid', user.userid)
       .is('ReturnDate', null);
 
-    if (error) {
-      console.error('Error fetching books:', error.message);
-    } else {
-      console.log('📚 Books fetched:', data); // For debugging
+    if (!error) {
       setBooksToReturn(data || []);
+    } else {
+      console.error('Fetch error:', error.message);
+      setBooksToReturn([]);
     }
   };
 
+  // ✅ Toggle single checkbox
   const toggleBook = (id) => {
     setSelectedBooks(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // ✅ Toggle "Select All"
   const toggleAll = () => {
-    const allSelected = booksToReturn.every(book => !!selectedBooks[book.BookingID]);
+    const allSelected = booksToReturn.every(book => selectedBooks[book.BookingID]);
     const newSelected = {};
     booksToReturn.forEach(book => {
       newSelected[book.BookingID] = !allSelected;
@@ -86,12 +94,16 @@ export default function ReturnBooks() {
     setSelectedBooks(newSelected);
   };
 
+  // ✅ On confirm return
   const handleReturn = async () => {
     const ids = booksToReturn
       .filter(b => selectedBooks[b.BookingID])
       .map(b => b.BookingID);
 
-    if (ids.length === 0) return;
+    if (ids.length === 0) {
+      setMessage('⚠️ Please select at least one book.');
+      return;
+    }
 
     const today = new Date().toISOString();
 
@@ -110,23 +122,23 @@ export default function ReturnBooks() {
   };
 
   if (!isAdmin) {
-    return <div className="p-4 text-red-600 font-bold">Access denied</div>;
+    return <div className="p-4 text-red-600 font-bold">Access Denied</div>;
   }
 
   return (
     <div className="max-w-xl mx-auto p-4">
-      <h1 className="text-xl font-bold mb-4">Return Books</h1>
+      <h1 className="text-2xl font-bold mb-4 text-purple-700">Return Books</h1>
 
       <input
         type="text"
-        placeholder="Search by Name, Email or Phone"
-        className="border p-2 rounded w-full"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by Name, Email or Phone"
+        className="w-full p-2 border rounded mb-2"
       />
 
       {suggestions.length > 0 && (
-        <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded z-10 relative">
+        <ul className="border rounded shadow bg-white max-h-48 overflow-auto z-10 relative">
           {suggestions.map((c, idx) => (
             <li
               key={idx}
@@ -147,13 +159,13 @@ export default function ReturnBooks() {
             <p>No books to return.</p>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center">
+              <div className="flex items-center mb-2">
                 <input
                   type="checkbox"
+                  checked={booksToReturn.every(b => selectedBooks[b.BookingID])}
                   onChange={toggleAll}
-                  checked={booksToReturn.length > 0 && booksToReturn.every(b => !!selectedBooks[b.BookingID])}
                 />
-                <label className="ml-2 text-sm">Select All</label>
+                <label className="ml-2 text-sm font-medium">Select All</label>
               </div>
 
               {booksToReturn.map((b) => (
@@ -175,7 +187,7 @@ export default function ReturnBooks() {
 
               <button
                 onClick={handleReturn}
-                className="mt-4 w-full bg-green-600 text-white py-2 rounded"
+                className="mt-4 w-full bg-green-600 text-white py-2 rounded hover:bg-green-700"
               >
                 Return Books
               </button>
@@ -184,7 +196,9 @@ export default function ReturnBooks() {
         </div>
       )}
 
-      {message && <p className="mt-4 text-center text-blue-700 font-semibold">{message}</p>}
+      {message && (
+        <p className="mt-6 text-center font-semibold text-blue-700">{message}</p>
+      )}
     </div>
   );
 }

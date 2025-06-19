@@ -18,14 +18,14 @@ export default function Navbar({ user }) {
 
         {user?.email === 'vkansal12@gmail.com' && (
           <>
-            <Link to="/admin/add-book" className="hover:underline">Add a Book</Link>
-            <Link to="/admin/issue-books" className="hover:underline">Issue Books</Link>
-            <Link to="/admin/signup" className="hover:underline">Sign Up</Link>
-            <Link to="/admin/edit-customer" className="hover:underline">View Customer</Link>
-            <Link to="/admin/review-books" className="hover:underline">Review Books</Link> {/* 👈 New Link */}
-            <Link to="/recommendations" className="hover:underline">Test Page</Link>
-            <Link to="/admin/view-signup-requests" className="hover:underline">  View Sign-Up Requests</Link>
-            <Link to="/admin/return-books" className="hover:underline">Return Books</Link>
+            <div><Link to="/admin/add-book" className="hover:underline">Add a Book</Link></div>
+            <div><Link to="/admin/issue-books" className="hover:underline">Issue Books</Link></div>
+            <div><Link to="/admin/signup" className="hover:underline">Sign Up</Link></div>
+            <div><Link to="/admin/edit-customer" className="hover:underline">View Customer</Link></div>
+            <div><Link to="/admin/review-books" className="hover:underline">Review Books</Link></div>
+            <div><Link to="/recommendations" className="hover:underline">Test Page</Link></div>
+            <div><Link to="/admin/view-signup-requests" className="hover:underline">  View Sign-Up Requests</Link></div>
+            <div><Link to="/admin/return-books" className="hover:underline">Return Books</Link></div>
           </>
         )}
       </div>
