@@ -10,20 +10,25 @@ export default function ReturnBooks() {
   const [message, setMessage] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Check admin
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data: admin } = await supabase
+      const { data: admin, error } = await supabase
         .from('admininfo')
         .select('*')
         .eq('AdminID', user.id)
         .single();
-      if (admin) setIsAdmin(true);
+      if (admin) {
+        setIsAdmin(true);
+      }
+      console.log('👤 Logged in Admin:', user.email, 'Admin Check Error:', error);
     };
     checkAdmin();
   }, []);
 
+  // Autocomplete suggestions
   useEffect(() => {
     if (search.trim().length < 1) {
       setSuggestions([]);
@@ -32,7 +37,7 @@ export default function ReturnBooks() {
 
     const fetchSuggestions = async () => {
       const trimmed = search.trim();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('customerinfo')
         .select('CustomerName, EmailID, ContactNo, userid')
         .or(
@@ -40,49 +45,55 @@ export default function ReturnBooks() {
         )
         .limit(10);
 
+      console.log('🔎 Autocomplete for:', trimmed, 'Results:', data, 'Error:', error);
       setSuggestions(data || []);
     };
 
     fetchSuggestions();
   }, [search]);
 
+  // Handle customer select
   const handleSelectUser = async (user) => {
     setSelectedUser(user);
     setSearch('');
     setSuggestions([]);
     setMessage('');
     setSelectedBooks({});
+    console.log('✅ Selected user:', user);
 
     const { data, error } = await supabase
       .from('circulationhistory')
-      .select(`BookingID, ISBN13, CopyID, BookingDate, ReturnDate`)
+      .select('BookingID, ISBN13, CopyID, BookingDate, ReturnDate')
       .eq('userid', user.userid)
       .is('ReturnDate', null);
 
-    console.log('Selected user:', user);
-    console.log(`📚 Books to return (raw): ${data?.length}`, data);
+    console.log('📦 Raw books to return:', data, 'Error:', error);
 
-    // Fetch book details from catalog manually
-    const enriched = await Promise.all((data || []).map(async (book) => {
-      const { data: catalogData } = await supabase
+    // Manually enrich with catalog info
+    const enriched = [];
+    for (const row of data || []) {
+      const { data: book } = await supabase
         .from('catalog')
         .select('Title, Thumbnail')
-        .eq('ISBN13', book.ISBN13)
-        .maybeSingle();
+        .eq('ISBN13', row.ISBN13)
+        .single();
 
-      return {
-        ...book,
-        catalog: catalogData || {},
-      };
-    }));
+      enriched.push({
+        ...row,
+        catalog: book
+      });
+    }
 
+    console.log('📚 Books to return (enriched):', enriched);
     setBooksToReturn(enriched);
   };
 
+  // Toggle one book
   const toggleBook = (id) => {
     setSelectedBooks(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // Toggle all
   const toggleAll = () => {
     const allSelected = booksToReturn.every(book => selectedBooks[book.BookingID]);
     const newSelected = {};
@@ -92,6 +103,7 @@ export default function ReturnBooks() {
     setSelectedBooks(newSelected);
   };
 
+  // Handle return
   const handleReturn = async () => {
     const ids = booksToReturn.filter(b => selectedBooks[b.BookingID]).map(b => b.BookingID);
     if (ids.length === 0) return;
@@ -144,7 +156,7 @@ export default function ReturnBooks() {
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-2">Books with {selectedUser.CustomerName}</h2>
           {booksToReturn.length === 0 ? (
-            <p>No books to return.</p>
+            <p className="text-sm text-gray-600">No books to return.</p>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center">
@@ -162,7 +174,7 @@ export default function ReturnBooks() {
                     <img src={b.catalog.Thumbnail} alt="thumb" className="w-12 h-16 object-cover" />
                   )}
                   <div>
-                    <p className="text-sm font-semibold">{b.catalog?.Title}</p>
+                    <p className="text-sm font-semibold">{b.catalog?.Title || b.ISBN13}</p>
                     <p className="text-xs text-gray-600">Issued on: {b.BookingDate?.slice(0, 10)}</p>
                   </div>
                 </div>
