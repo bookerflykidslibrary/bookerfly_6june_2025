@@ -13,13 +13,21 @@ export default function ReturnBooks() {
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('👤 Logged-in user:', user);
       if (!user) return;
+
       const { data: admin, error } = await supabase
         .from('admininfo')
         .select('*')
         .eq('AdminID', user.id)
         .single();
-      if (admin && !error) setIsAdmin(true);
+
+      if (admin && !error) {
+        setIsAdmin(true);
+        console.log('✅ Admin verified');
+      } else {
+        console.warn('🚫 Not an admin:', error?.message);
+      }
     };
     checkAdmin();
   }, []);
@@ -32,6 +40,7 @@ export default function ReturnBooks() {
 
     const fetchSuggestions = async () => {
       const trimmed = search.trim();
+      console.log(`🔍 Searching for: ${trimmed}`);
       const { data, error } = await supabase
         .from('customerinfo')
         .select('CustomerName, EmailID, ContactNo, userid')
@@ -40,7 +49,12 @@ export default function ReturnBooks() {
         )
         .limit(10);
 
-      if (error) console.error('❌ Error fetching suggestions:', error.message);
+      if (error) {
+        console.error('❌ Suggestion fetch error:', error.message);
+      } else {
+        console.log(`✅ Found ${data.length} customer matches`);
+      }
+
       setSuggestions(data || []);
     };
 
@@ -54,6 +68,7 @@ export default function ReturnBooks() {
     setMessage('');
     setSelectedBooks({});
     setBooksToReturn([]);
+    console.log('👤 Selected user:', user);
 
     const { data, error } = await supabase
       .from('circulationhistory')
@@ -72,7 +87,9 @@ export default function ReturnBooks() {
       .is('ReturnDate', null);
 
     if (error) {
-      console.error('❌ Error loading books:', error.message);
+      console.error('❌ Error fetching circulation history:', error.message);
+    } else {
+      console.log(`📚 Books to return: ${data.length}`, data);
     }
 
     setBooksToReturn(data || []);
@@ -93,6 +110,7 @@ export default function ReturnBooks() {
 
   const handleReturn = async () => {
     const ids = booksToReturn.filter(b => selectedBooks[b.BookingID]).map(b => b.BookingID);
+    console.log('📝 Returning BookingIDs:', ids);
     if (ids.length === 0) return;
 
     const today = new Date().toISOString();
@@ -105,6 +123,7 @@ export default function ReturnBooks() {
       setMessage(`✅ Books returned for ${selectedUser.CustomerName}`);
       setBooksToReturn(prev => prev.filter(b => !ids.includes(b.BookingID)));
       setSelectedBooks({});
+      console.log('✅ Successfully returned books');
     } else {
       console.error('❌ Return error:', error.message);
       setMessage('❌ Error returning books: ' + error.message);
