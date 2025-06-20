@@ -1,4 +1,4 @@
-mport {Link} from 'react-router-dom';
+import {Link} from 'react-router-dom';
 import supabase from '../utils/supabaseClient';
 
 export default function Navbar({user}) {
