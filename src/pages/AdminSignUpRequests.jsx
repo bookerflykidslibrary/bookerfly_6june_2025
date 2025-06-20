@@ -11,13 +11,14 @@ export default function AdminSignUpRequests() {
     const { data, error } = await supabase
         .from('SignUpRequests')
         .select('*')
+        .neq('status', 'APPROVED') // 🔍 Exclude approved rows
         .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Fetch error:', error.message);
       setError(error);
     } else {
-      console.error('Fetch response:', data);
+      console.log('Fetch response:', data);
       setRequests(data);
     }
     setLoading(false);
@@ -36,7 +37,7 @@ export default function AdminSignUpRequests() {
       alert(`Status update failed: ${error.message}`);
     } else {
       console.log('Status updated successfully');
-      fetchRequests();
+      setTimeout(() => fetchRequests(), 300); // ⏱ Delay to let trigger complete
     }
   };
 
