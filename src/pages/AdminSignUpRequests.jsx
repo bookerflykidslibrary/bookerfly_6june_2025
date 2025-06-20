@@ -17,7 +17,7 @@ export default function AdminSignUpRequests() {
       console.error('Fetch error:', error.message);
       setError(error);
     } else {
-      console.error('Fetch response:',data );
+      console.error('Fetch response:', data);
       setRequests(data);
     }
     setLoading(false);
@@ -36,7 +36,7 @@ export default function AdminSignUpRequests() {
       alert(`Status update failed: ${error.message}`);
     } else {
       console.log('Status updated successfully');
-      fetchRequests(); // Refresh the list
+      fetchRequests();
     }
   };
 
@@ -48,17 +48,19 @@ export default function AdminSignUpRequests() {
   if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
 
   return (
-      <div className="p-6 max-w-6xl mx-auto">
+      <div className="p-6 max-w-7xl mx-auto">
         <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
         <div className="overflow-x-auto">
-          <table className="min-w-full border border-gray-300">
+          <table className="min-w-full border border-gray-300 text-sm">
             <thead className="bg-gray-100">
             <tr>
               <th className="border p-2">Name</th>
               <th className="border p-2">Email</th>
               <th className="border p-2">Phone</th>
-              <th className="border p-2">Child</th>
-              <th className="border p-2">Age</th>
+              <th className="border p-2">Child 1</th>
+              <th className="border p-2">DOB 1</th>
+              <th className="border p-2">Child 2</th>
+              <th className="border p-2">DOB 2</th>
               <th className="border p-2">Address</th>
               <th className="border p-2">Message</th>
               <th className="border p-2">Status</th>
@@ -71,8 +73,10 @@ export default function AdminSignUpRequests() {
                   <td className="border p-2">{r.name}</td>
                   <td className="border p-2">{r.email}</td>
                   <td className="border p-2">{r.phone}</td>
-                  <td className="border p-2">{r.child_name}</td>
-                  <td className="border p-2 text-center">{r.child_age}</td>
+                  <td className="border p-2">{r.child1_name}</td>
+                  <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString('en-IN')}</td>
+                  <td className="border p-2">{r.child2_name}</td>
+                  <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString('en-IN') : '-'}</td>
                   <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
                   <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
                   <td className="border p-2 text-center font-semibold">{r.status}</td>
