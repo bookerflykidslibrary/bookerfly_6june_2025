@@ -1,6 +1,16 @@
+// AdminAddBook.jsx
 import React, { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import supabase from '../utils/supabaseClient';
+
+const CATEGORY_AGE_MAP = {
+  'Juvenile Fiction': { min: 8, max: 12 },
+  'Young Adult': { min: 13, max: 18 },
+  "Children's Books": { min: 4, max: 8 },
+  'Board Book': { min: 0, max: 3 },
+  'Picture Book': { min: 3, max: 6 },
+  'Early Reader': { min: 5, max: 7 },
+};
 
 export default function AdminAddBook() {
   const [isbn, setIsbn] = useState('');
@@ -31,9 +41,7 @@ export default function AdminAddBook() {
 
   useEffect(() => {
     return () => {
-      if (thumbnailPreview) {
-        URL.revokeObjectURL(thumbnailPreview);
-      }
+      if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
     };
   }, [thumbnailPreview]);
 
@@ -52,14 +60,20 @@ export default function AdminAddBook() {
     } else {
       const info = await fetchFromGoogleBooks(isbn);
       if (info) {
+        const category = info.categories?.[0];
+        let minAge = '', maxAge = '';
+        if (category && CATEGORY_AGE_MAP[category]) {
+          minAge = CATEGORY_AGE_MAP[category].min;
+          maxAge = CATEGORY_AGE_MAP[category].max;
+        }
         setBook({
           ISBN13: isbn,
           Title: info.title || '',
           Authors: info.authors?.join(', ') || '',
           Description: info.description || '',
           Thumbnail: info.imageLinks?.thumbnail || '',
-          MinAge: '',
-          MaxAge: '',
+          MinAge: minAge,
+          MaxAge: maxAge,
           Reviews: '',
           Tags: [],
         });
@@ -80,20 +94,15 @@ export default function AdminAddBook() {
     }
 
     const { data: { user } } = await supabase.auth.getUser();
-    const { data: admin } = await supabase
-      .from('admininfo')
-      .select('AdminLocation')
-      .eq('AdminID', user.id)
-      .single();
-
+    const { data: admin } = await supabase.from('admininfo').select('AdminLocation').eq('AdminID', user.id).single();
     const loc = admin?.AdminLocation || '';
     setLocation(loc);
 
     const { data: existingCopies } = await supabase
-      .from('copyinfo')
-      .select('*')
-      .eq('ISBN13', isbn)
-      .eq('CopyLocation', loc);
+        .from('copyinfo')
+        .select('*')
+        .eq('ISBN13', isbn)
+        .eq('CopyLocation', loc);
 
     setCopyNumber((existingCopies?.length || 0) + 1);
   };
@@ -113,10 +122,7 @@ export default function AdminAddBook() {
     const fileName = `${isbn}_${Date.now()}.${fileExt}`;
     const filePath = `thumbnails/covers/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('bookassets')
-      .upload(filePath, thumbnailFile);
-
+    const { error: uploadError } = await supabase.storage.from('bookassets').upload(filePath, thumbnailFile);
     if (uploadError) {
       setMessage('Thumbnail upload failed: ' + uploadError.message);
       return '';
@@ -128,9 +134,7 @@ export default function AdminAddBook() {
 
   const handleAdd = async () => {
     if (!book) return;
-
     const thumbnailUrl = await handleThumbnailUpload();
-
     const newBook = {
       ...book,
       Tags: selectedTags.join(','),
@@ -144,7 +148,6 @@ export default function AdminAddBook() {
     if (catalogError) return setMessage('Error adding to catalog: ' + catalogError.message);
 
     const copyID = Date.now().toString();
-
     const { error: copyError } = await supabase.from('copyinfo').insert({
       CopyID: copyID,
       ISBN13: isbn,
@@ -168,17 +171,10 @@ export default function AdminAddBook() {
     setAskPrice('');
   };
 
-  const startScan = () => {
-    setShowScanner(true);
-  };
-
+  const startScan = () => setShowScanner(true);
   const stopScan = async () => {
     if (scanner) {
-      try {
-        await scanner.stop();
-      } catch (e) {
-        console.warn('Scanner stop error', e);
-      }
+      try { await scanner.stop(); } catch (e) { console.warn('Scanner stop error', e); }
       setScanner(null);
     }
     const el = document.getElementById('isbn-scanner');
@@ -191,18 +187,15 @@ export default function AdminAddBook() {
       if (showScanner && !scanner && document.getElementById('isbn-scanner')) {
         const newScanner = new Html5Qrcode('isbn-scanner');
         setScanner(newScanner);
-
         try {
           await newScanner.start(
-            { facingMode: 'environment' },
-            { fps: 10, qrbox: 250 },
-            (decodedText) => {
-              setIsbn(decodedText);
-              stopScan();
-            },
-            (err) => {
-              console.warn('Scan error', err);
-            }
+              { facingMode: 'environment' },
+              { fps: 10, qrbox: 250 },
+              (decodedText) => {
+                setIsbn(decodedText);
+                stopScan();
+              },
+              (err) => console.warn('Scan error', err)
           );
         } catch (err) {
           console.error('Scanner init failed', err);
@@ -214,8 +207,8 @@ export default function AdminAddBook() {
   }, [showScanner]);
 
   return (
-    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
-      <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
+      <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
+        <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
 
       <div className="flex gap-2 mb-2">
         <input
@@ -350,6 +343,6 @@ export default function AdminAddBook() {
           </div>
         </div>
       )}
-    </div>
+      </div>
   );
 }
