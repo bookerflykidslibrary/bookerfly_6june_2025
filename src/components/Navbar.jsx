@@ -17,7 +17,7 @@ export default function Navbar({ user }) {
         { to: '/admin/edit-customer', label: 'View Customer' },
         { to: '/admin/review-books', label: 'Review Books' },
         { to: '/recommendations', label: 'Test Page' },
-        { to: '/admin/view-signup-requests', label: 'View Sign-Up Requests' },
+        { to: '/admin/view-signup-requests', label: 'Next steps' },
         { to: '/admin/return-books', label: 'Return Books' },
     ];
 
