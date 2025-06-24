@@ -104,7 +104,11 @@ export default function AdminAddBook() {
         <input
           type="text"
           value={isbn}
-          onChange={(e) => handleAutocomplete(e.target.value)}
+onChange={(e) => {
+  const val = e.target.value;
+  setIsbn(val);
+  handleAutocomplete(val);
+}}
           placeholder="Enter ISBN13 or Title"
           className="w-full p-2 border border-gray-300 rounded"
         />
