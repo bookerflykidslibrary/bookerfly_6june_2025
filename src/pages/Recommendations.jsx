@@ -7,6 +7,7 @@ export default function AdminSignUpRequests() {
   const [error, setError] = useState(null);
   const [expiringSoon, setExpiringSoon] = useState([]);
   const [expiredMembers, setExpiredMembers] = useState([]);
+  const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -60,9 +61,19 @@ export default function AdminSignUpRequests() {
     setExpiredMembers(alreadyExpired || []);
   };
 
+  const fetchUpcomingDeliveries = async () => {
+    const { data, error } = await supabase.rpc('get_upcoming_deliveries_7_days');
+    if (error) {
+      console.error('Upcoming deliveries fetch error:', error.message);
+    } else {
+      setUpcomingDeliveries(data || []);
+    }
+  };
+
   useEffect(() => {
     fetchRequests();
     fetchMembershipInfo();
+    fetchUpcomingDeliveries();
   }, []);
 
   if (loading) return <div className="p-4">Loading sign-up requests...</div>;
@@ -125,13 +136,26 @@ export default function AdminSignUpRequests() {
       </ul>
 
       <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
-      <ul className="list-disc list-inside text-sm">
+      <ul className="list-disc list-inside text-sm mb-6">
         {expiredMembers.length === 0 ? (
           <li>No expired memberships.</li>
         ) : (
           expiredMembers.map((m, idx) => (
             <li key={idx}>
               <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
+            </li>
+          ))
+        )}
+      </ul>
+
+      <h2 className="text-xl font-bold mb-2 text-green-700">📚 Upcoming Deliveries in Next 7 Days</h2>
+      <ul className="list-disc list-inside text-sm">
+        {upcomingDeliveries.length === 0 ? (
+          <li>No upcoming deliveries.</li>
+        ) : (
+          upcomingDeliveries.map((d, idx) => (
+            <li key={idx}>
+              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.Title} — Deliver on <strong>{new Date(d.EstimatedDeliveryDate).toLocaleDateString()}</strong>
             </li>
           ))
         )}
