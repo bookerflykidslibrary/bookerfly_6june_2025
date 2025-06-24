@@ -14,7 +14,6 @@ const CATEGORY_AGE_MAP = {
 
 export default function AdminAddBook() {
   const [isbn, setIsbn] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
   const [book, setBook] = useState(null);
   const [tags, setTags] = useState([]);
   const [thumbnailFile, setThumbnailFile] = useState(null);
@@ -29,6 +28,7 @@ export default function AdminAddBook() {
   const [message, setMessage] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   const [scanner, setScanner] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
 
   useEffect(() => {
     const fetchTagsAndLocations = async () => {
@@ -40,45 +40,69 @@ export default function AdminAddBook() {
     fetchTagsAndLocations();
   }, []);
 
-  const handleAutocomplete = async (query) => {
-    setIsbn(query);
-    if (query.length < 3) return setSuggestions([]);
+  useEffect(() => {
+    return () => {
+      if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
+    };
+  }, [thumbnailPreview]);
 
+  const handleAutocomplete = async (query) => {
+    if (!query) return setSuggestions([]);
     const { data } = await supabase
       .from('catalog')
-      .select('Title, ISBN13')
+      .select('ISBN13, Title')
       .or(`Title.ilike.%${query}%,ISBN13.ilike.%${query}%`)
       .limit(10);
     setSuggestions(data || []);
   };
 
-  const handleSearch = async () => {
+  const fetchFromGoogleBooks = async (isbn13) => {
+    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn13}`);
+    const json = await res.json();
+    return json.items?.[0]?.volumeInfo;
+  };
+
+  const handleSearch = async (searchIsbn) => {
+    const isbnToUse = searchIsbn || isbn;
     setMessage('');
-    const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
+
+    const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbnToUse).single();
 
     if (catalogData) {
       setBook(catalogData);
     } else {
-      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-      const json = await res.json();
-      const info = json.items?.[0]?.volumeInfo;
+      const info = await fetchFromGoogleBooks(isbnToUse);
       if (info) {
         const category = info.categories?.[0];
-        const age = CATEGORY_AGE_MAP[category] || { min: '', max: '' };
+        let minAge = '', maxAge = '';
+        if (category && CATEGORY_AGE_MAP[category]) {
+          minAge = CATEGORY_AGE_MAP[category].min;
+          maxAge = CATEGORY_AGE_MAP[category].max;
+        }
         setBook({
-          ISBN13: isbn,
+          ISBN13: isbnToUse,
           Title: info.title || '',
           Authors: info.authors?.join(', ') || '',
           Description: info.description || '',
           Thumbnail: info.imageLinks?.thumbnail || '',
-          MinAge: age.min,
-          MaxAge: age.max,
+          MinAge: minAge,
+          MaxAge: maxAge,
           Reviews: '',
           Tags: [],
         });
       } else {
         setMessage('Google Books info not found. You can still enter details manually.');
-        setBook({ ISBN13: isbn, Title: '', Authors: '', Description: '', Thumbnail: '', MinAge: '', MaxAge: '', Reviews: '', Tags: [] });
+        setBook({
+          ISBN13: isbnToUse,
+          Title: '',
+          Authors: '',
+          Description: '',
+          Thumbnail: '',
+          MinAge: '',
+          MaxAge: '',
+          Reviews: '',
+          Tags: [],
+        });
       }
     }
 
@@ -88,41 +112,140 @@ export default function AdminAddBook() {
     setLocation(loc);
 
     const { data: existingCopies } = await supabase
-      .from('copyinfo')
-      .select('*')
-      .eq('ISBN13', isbn)
-      .eq('CopyLocation', loc);
+        .from('copyinfo')
+        .select('*')
+        .eq('ISBN13', isbnToUse)
+        .eq('CopyLocation', loc);
 
     setCopyNumber((existingCopies?.length || 0) + 1);
   };
 
+  const handleTagChange = (tagName) => {
+    if (selectedTags.includes(tagName)) {
+      setSelectedTags(selectedTags.filter((t) => t !== tagName));
+    } else {
+      setSelectedTags([...selectedTags, tagName]);
+    }
+  };
+
+  const handleThumbnailUpload = async () => {
+    if (!thumbnailFile) return book.Thumbnail || '';
+
+    const fileExt = thumbnailFile.name.split('.').pop();
+    const fileName = `${isbn}_${Date.now()}.${fileExt}`;
+    const filePath = `thumbnails/covers/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage.from('bookassets').upload(filePath, thumbnailFile);
+    if (uploadError) {
+      setMessage('Thumbnail upload failed: ' + uploadError.message);
+      return '';
+    }
+
+    const { data } = supabase.storage.from('bookassets').getPublicUrl(filePath);
+    return data.publicUrl;
+  };
+
+  const handleAdd = async () => {
+    if (!book) return;
+    const thumbnailUrl = await handleThumbnailUpload();
+    const newBook = {
+      ...book,
+      Tags: selectedTags.join(','),
+      ISBN13: isbn,
+      MinAge: book.MinAge || 0,
+      MaxAge: book.MaxAge || 18,
+      Thumbnail: thumbnailUrl,
+    };
+
+    const { error: catalogError } = await supabase.from('catalog').upsert(newBook);
+    if (catalogError) return setMessage('Error adding to catalog: ' + catalogError.message);
+
+    const copyID = Date.now().toString();
+    const { error: copyError } = await supabase.from('copyinfo').insert({
+      CopyID: copyID,
+      ISBN13: isbn,
+      CopyNumber: copyNumber,
+      CopyLocation: location,
+      CopyLocationID: copyLocationID,
+      BuyPrice: buyPrice,
+      AskPrice: askPrice,
+      CopyBooked: false,
+    });
+
+    if (copyError) return setMessage('Error adding copy: ' + copyError.message);
+
+    setMessage('✅ Book and copy added successfully!');
+    setBook(null);
+    setThumbnailFile(null);
+    setThumbnailPreview(null);
+    setSelectedTags([]);
+    setCopyLocationID('');
+    setBuyPrice('');
+    setAskPrice('');
+  };
+
+  const startScan = () => setShowScanner(true);
+  const stopScan = async () => {
+    if (scanner) {
+      try { await scanner.stop(); } catch (e) { console.warn('Scanner stop error', e); }
+      setScanner(null);
+    }
+    const el = document.getElementById('isbn-scanner');
+    if (el) el.innerHTML = '';
+    setShowScanner(false);
+  };
+
+  useEffect(() => {
+    const initScanner = async () => {
+      if (showScanner && !scanner && document.getElementById('isbn-scanner')) {
+        const newScanner = new Html5Qrcode('isbn-scanner');
+        setScanner(newScanner);
+        try {
+          await newScanner.start(
+              { facingMode: 'environment' },
+              { fps: 10, qrbox: 250 },
+              (decodedText) => {
+                setIsbn(decodedText);
+                stopScan();
+              },
+              (err) => console.warn('Scan error', err)
+          );
+        } catch (err) {
+          console.error('Scanner init failed', err);
+          stopScan();
+        }
+      }
+    };
+    initScanner();
+  }, [showScanner]);
+
   return (
-    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
-      <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
+      <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
+        <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
 
       <div className="flex gap-2 mb-2 relative">
         <input
           type="text"
           value={isbn}
-onChange={(e) => {
-  const val = e.target.value;
-  setIsbn(val);
-  handleAutocomplete(val);
-}}
+          onChange={(e) => {
+            const val = e.target.value;
+            setIsbn(val);
+            handleAutocomplete(val);
+          }}
           placeholder="Enter ISBN13 or Title"
           className="w-full p-2 border border-gray-300 rounded"
         />
-        <button onClick={() => setShowScanner(true)} className="bg-purple-600 text-white px-3 rounded">📷</button>
+        <button onClick={startScan} className="bg-purple-600 text-white px-3 rounded">📷</button>
         {suggestions.length > 0 && (
-          <ul className="absolute z-10 bg-white border border-gray-300 mt-10 w-full max-h-48 overflow-y-auto rounded shadow text-sm">
-            {suggestions.map((s, i) => (
+          <ul className="absolute z-10 bg-white border rounded w-full top-full mt-1 shadow text-sm">
+            {suggestions.map((s) => (
               <li
-                key={i}
+                key={s.ISBN13}
+                className="p-2 hover:bg-blue-100 cursor-pointer"
                 onClick={() => {
                   setIsbn(s.ISBN13);
                   setSuggestions([]);
                 }}
-                className="p-2 hover:bg-blue-100 cursor-pointer"
               >
                 {s.Title} ({s.ISBN13})
               </li>
@@ -131,8 +254,9 @@ onChange={(e) => {
         )}
       </div>
 
-      <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
-      {/* Rest of existing JSX remains unchanged */}
+      <button onClick={() => handleSearch(isbn)} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
+
+      {/* ... rest of the code unchanged ... */}
     </div>
   );
 }
