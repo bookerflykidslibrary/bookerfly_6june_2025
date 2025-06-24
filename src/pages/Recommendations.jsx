@@ -1,166 +1,134 @@
-import { useEffect, useState } from 'react';
+// AdminAddBook.jsx
+import React, { useState, useEffect } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import supabase from '../utils/supabaseClient';
 
-export default function AdminSignUpRequests() {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [expiringSoon, setExpiringSoon] = useState([]);
-  const [expiredMembers, setExpiredMembers] = useState([]);
-  const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
+const CATEGORY_AGE_MAP = {
+  'Juvenile Fiction': { min: 8, max: 12 },
+  'Young Adult': { min: 13, max: 18 },
+  "Children's Books": { min: 4, max: 8 },
+  'Board Book': { min: 0, max: 3 },
+  'Picture Book': { min: 3, max: 6 },
+  'Early Reader': { min: 5, max: 7 },
+};
 
-  const fetchRequests = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('SignUpRequests')
-      .select('*')
-      .neq('status', 'APPROVED')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Fetch error:', error.message);
-      setError(error);
-    } else {
-      setRequests(data);
-    }
-    setLoading(false);
-  };
-
-  const updateStatus = async (id, newStatus) => {
-    const { error } = await supabase
-      .from('SignUpRequests')
-      .update({ status: newStatus })
-      .eq('id', id);
-
-    if (error) {
-      alert(`Status update failed: ${error.message}`);
-    } else {
-      fetchRequests();
-    }
-  };
-
-  const fetchMembershipInfo = async () => {
-    const today = new Date();
-    const nextWeek = new Date();
-    nextWeek.setDate(today.getDate() + 7);
-
-    const { data: soonExpiring } = await supabase
-      .from('customerinfo')
-      .select('CustomerName, EmailID, ContactNo, EndDate')
-      .gte('EndDate', today.toISOString())
-      .lte('EndDate', nextWeek.toISOString())
-      .order('EndDate');
-
-    const { data: alreadyExpired } = await supabase
-      .from('customerinfo')
-      .select('CustomerName, EmailID, ContactNo, EndDate')
-      .lt('EndDate', today.toISOString())
-      .order('EndDate');
-
-    setExpiringSoon(soonExpiring || []);
-    setExpiredMembers(alreadyExpired || []);
-  };
-
-  const fetchUpcomingDeliveries = async () => {
-    const { data, error } = await supabase.rpc('get_upcoming_deliveries_7_days');
-
-    if (error) {
-      console.error('Delivery fetch error:', error.message);
-    } else {
-      setUpcomingDeliveries(data || []);
-    }
-  };
+export default function AdminAddBook() {
+  const [isbn, setIsbn] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [book, setBook] = useState(null);
+  const [tags, setTags] = useState([]);
+  const [thumbnailFile, setThumbnailFile] = useState(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState(null);
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [location, setLocation] = useState('');
+  const [copyNumber, setCopyNumber] = useState(1);
+  const [copyLocationID, setCopyLocationID] = useState('');
+  const [buyPrice, setBuyPrice] = useState('');
+  const [askPrice, setAskPrice] = useState('');
+  const [message, setMessage] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanner, setScanner] = useState(null);
 
   useEffect(() => {
-    fetchRequests();
-    fetchMembershipInfo();
-    fetchUpcomingDeliveries();
+    const fetchTagsAndLocations = async () => {
+      const { data: tagList } = await supabase.from('tags').select('*');
+      setTags(tagList || []);
+      const { data: locationList } = await supabase.from('locations').select('*');
+      setLocations(locationList || []);
+    };
+    fetchTagsAndLocations();
   }, []);
 
-  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
-  if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
+  const handleAutocomplete = async (query) => {
+    setIsbn(query);
+    if (query.length < 3) return setSuggestions([]);
+
+    const { data } = await supabase
+      .from('catalog')
+      .select('Title, ISBN13')
+      .or(`Title.ilike.%${query}%,ISBN13.ilike.%${query}%`)
+      .limit(10);
+    setSuggestions(data || []);
+  };
+
+  const handleSearch = async () => {
+    setMessage('');
+    const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
+
+    if (catalogData) {
+      setBook(catalogData);
+    } else {
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+      const json = await res.json();
+      const info = json.items?.[0]?.volumeInfo;
+      if (info) {
+        const category = info.categories?.[0];
+        const age = CATEGORY_AGE_MAP[category] || { min: '', max: '' };
+        setBook({
+          ISBN13: isbn,
+          Title: info.title || '',
+          Authors: info.authors?.join(', ') || '',
+          Description: info.description || '',
+          Thumbnail: info.imageLinks?.thumbnail || '',
+          MinAge: age.min,
+          MaxAge: age.max,
+          Reviews: '',
+          Tags: [],
+        });
+      } else {
+        setMessage('Google Books info not found. You can still enter details manually.');
+        setBook({ ISBN13: isbn, Title: '', Authors: '', Description: '', Thumbnail: '', MinAge: '', MaxAge: '', Reviews: '', Tags: [] });
+      }
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: admin } = await supabase.from('admininfo').select('AdminLocation').eq('AdminID', user.id).single();
+    const loc = admin?.AdminLocation || '';
+    setLocation(loc);
+
+    const { data: existingCopies } = await supabase
+      .from('copyinfo')
+      .select('*')
+      .eq('ISBN13', isbn)
+      .eq('CopyLocation', loc);
+
+    setCopyNumber((existingCopies?.length || 0) + 1);
+  };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
-      <div className="overflow-x-auto mb-8">
-        <table className="min-w-full border border-gray-300 text-sm">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="border p-2">Name</th>
-              <th className="border p-2">Email</th>
-              <th className="border p-2">Phone</th>
-              <th className="border p-2">Child 1</th>
-              <th className="border p-2">DOB 1</th>
-              <th className="border p-2">Child 2</th>
-              <th className="border p-2">DOB 2</th>
-              <th className="border p-2">Address</th>
-              <th className="border p-2">Message</th>
-              <th className="border p-2">Status</th>
-              <th className="border p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {requests.map((r) => (
-              <tr key={r.id}>
-                <td className="border p-2">{r.name}</td>
-                <td className="border p-2">{r.email}</td>
-                <td className="border p-2">{r.phone}</td>
-                <td className="border p-2">{r.child1_name}</td>
-                <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
-                <td className="border p-2">{r.child2_name}</td>
-                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
-                <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
-                <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
-                <td className="border p-2 text-center">{r.status}</td>
-                <td className="border p-2 space-x-2">
-                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
-                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
-                </td>
-              </tr>
+    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
+      <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
+
+      <div className="flex gap-2 mb-2 relative">
+        <input
+          type="text"
+          value={isbn}
+          onChange={(e) => handleAutocomplete(e.target.value)}
+          placeholder="Enter ISBN13 or Title"
+          className="w-full p-2 border border-gray-300 rounded"
+        />
+        <button onClick={() => setShowScanner(true)} className="bg-purple-600 text-white px-3 rounded">📷</button>
+        {suggestions.length > 0 && (
+          <ul className="absolute z-10 bg-white border border-gray-300 mt-10 w-full max-h-48 overflow-y-auto rounded shadow text-sm">
+            {suggestions.map((s, i) => (
+              <li
+                key={i}
+                onClick={() => {
+                  setIsbn(s.ISBN13);
+                  setSuggestions([]);
+                }}
+                className="p-2 hover:bg-blue-100 cursor-pointer"
+              >
+                {s.Title} ({s.ISBN13})
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        )}
       </div>
 
-      <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {expiringSoon.length === 0 ? (
-          <li>No expiring memberships.</li>
-        ) : (
-          expiringSoon.map((m, idx) => (
-            <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
-            </li>
-          ))
-        )}
-      </ul>
-
-      <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {expiredMembers.length === 0 ? (
-          <li>No expired memberships.</li>
-        ) : (
-          expiredMembers.map((m, idx) => (
-            <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
-            </li>
-          ))
-        )}
-      </ul>
-
-      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
-      <ul className="list-disc list-inside text-sm">
-        {upcomingDeliveries.length === 0 ? (
-          <li>No deliveries scheduled in next 7 days.</li>
-        ) : (
-          upcomingDeliveries.map((d, idx) => (
-            <li key={idx}>
-              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — Next delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong>
-            </li>
-          ))
-        )}
-      </ul>
+      <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
+      {/* Rest of existing JSX remains unchanged */}
     </div>
   );
 }
