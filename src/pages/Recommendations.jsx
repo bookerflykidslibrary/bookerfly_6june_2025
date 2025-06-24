@@ -1,297 +1,173 @@
-// AdminAddBook.jsx
-import React, { useState, useEffect } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
-const CATEGORY_AGE_MAP = {
-  'Juvenile Fiction': { min: 8, max: 12 },
-  'Young Adult': { min: 13, max: 18 },
-  "Children's Books": { min: 4, max: 8 },
-  'Board Book': { min: 0, max: 3 },
-  'Picture Book': { min: 3, max: 6 },
-  'Early Reader': { min: 5, max: 7 },
-};
+export default function AdminSignUpRequests() {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expiringSoon, setExpiringSoon] = useState([]);
+  const [expiredMembers, setExpiredMembers] = useState([]);
+  const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
+  const [futuresMap, setFuturesMap] = useState({});
+  const [quotasMap, setQuotasMap] = useState({});
 
-export default function AdminAddBook() {
-  const [isbn, setIsbn] = useState('');
-  const [titleSearch, setTitleSearch] = useState('');
-  const [titleSuggestions, setTitleSuggestions] = useState([]);
-  const [book, setBook] = useState(null);
-  const [tags, setTags] = useState([]);
-  const [thumbnailFile, setThumbnailFile] = useState(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState(null);
-  const [selectedTags, setSelectedTags] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [location, setLocation] = useState('');
-  const [copyNumber, setCopyNumber] = useState(1);
-  const [copyLocationID, setCopyLocationID] = useState('');
-  const [buyPrice, setBuyPrice] = useState('');
-  const [askPrice, setAskPrice] = useState('');
-  const [message, setMessage] = useState('');
-  const [showScanner, setShowScanner] = useState(false);
-  const [scanner, setScanner] = useState(null);
+  const fetchRequests = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('SignUpRequests')
+      .select('*')
+      .neq('status', 'APPROVED')
+      .order('created_at', { ascending: false });
 
-  useEffect(() => {
-    const fetchTagsAndLocations = async () => {
-      const { data: tagList } = await supabase.from('tags').select('*');
-      setTags(tagList || []);
-      const { data: locationList } = await supabase.from('locations').select('*');
-      setLocations(locationList || []);
-    };
-    fetchTagsAndLocations();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
-    };
-  }, [thumbnailPreview]);
-
-  useEffect(() => {
-    const fetchSuggestions = async () => {
-      if (titleSearch.length < 2) {
-        setTitleSuggestions([]);
-        return;
-      }
-      const { data } = await supabase
-        .from('catalog')
-        .select('Title, ISBN13')
-        .ilike('Title', `%${titleSearch}%`)
-        .limit(5);
-      setTitleSuggestions(data || []);
-    };
-    fetchSuggestions();
-  }, [titleSearch]);
-
-  const fetchFromGoogleBooks = async (isbn) => {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-    const json = await res.json();
-    return json.items?.[0]?.volumeInfo;
+    if (error) {
+      console.error('Fetch error:', error.message);
+      setError(error);
+    } else {
+      setRequests(data);
+    }
+    setLoading(false);
   };
 
-  const handleSearch = async () => {
-    setMessage('');
-    if (!isbn || isbn.trim() === '') {
-      setMessage('❌ Please enter or select an ISBN13.');
+  const updateStatus = async (id, newStatus) => {
+    const { error } = await supabase
+      .from('SignUpRequests')
+      .update({ status: newStatus })
+      .eq('id', id);
+
+    if (error) {
+      alert(`Status update failed: ${error.message}`);
+    } else {
+      fetchRequests();
+    }
+  };
+
+  const fetchMembershipInfo = async () => {
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+
+    const { data: soonExpiring } = await supabase
+      .from('customerinfo')
+      .select('CustomerName, EmailID, ContactNo, EndDate')
+      .gte('EndDate', today.toISOString())
+      .lte('EndDate', nextWeek.toISOString())
+      .order('EndDate');
+
+    const { data: alreadyExpired } = await supabase
+      .from('customerinfo')
+      .select('CustomerName, EmailID, ContactNo, EndDate')
+      .lt('EndDate', today.toISOString())
+      .order('EndDate');
+
+    setExpiringSoon(soonExpiring || []);
+    setExpiredMembers(alreadyExpired || []);
+  };
+
+  const fetchUpcomingDeliveries = async () => {
+    const { data, error } = await supabase.rpc('get_upcoming_deliveries_7_days');
+    if (error) {
+      console.error('Delivery fetch error:', error.message);
       return;
     }
+    setUpcomingDeliveries(data || []);
 
-    const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
+    const userIds = data.map(d => d.userid);
+    if (userIds.length === 0) return;
 
-    if (catalogData) {
-      setBook(catalogData);
-    } else {
-      const info = await fetchFromGoogleBooks(isbn);
-      if (info) {
-        const category = info.categories?.[0];
-        let minAge = '', maxAge = '';
-        if (category && CATEGORY_AGE_MAP[category]) {
-          minAge = CATEGORY_AGE_MAP[category].min;
-          maxAge = CATEGORY_AGE_MAP[category].max;
-        }
-        setBook({
-          ISBN13: isbn,
-          Title: info.title || '',
-          Authors: info.authors?.join(', ') || '',
-          Description: info.description || '',
-          Thumbnail: info.imageLinks?.thumbnail || '',
-          MinAge: minAge,
-          MaxAge: maxAge,
-          Reviews: '',
-          Tags: [],
-        });
-      } else {
-        setMessage('Google Books info not found. You can still enter details manually.');
-        setBook({
-          ISBN13: isbn,
-          Title: '',
-          Authors: '',
-          Description: '',
-          Thumbnail: '',
-          MinAge: '',
-          MaxAge: '',
-          Reviews: '',
-          Tags: [],
-        });
-      }
+    const { data: futures } = await supabase
+      .from('circulationfuture')
+      .select('userid')
+      .in('userid', userIds);
+
+    const futureCounts = futures?.reduce((acc, cur) => {
+      acc[cur.userid] = (acc[cur.userid] || 0) + 1;
+      return acc;
+    }, {}) || {};
+    setFuturesMap(futureCounts);
+
+    const { data: customers } = await supabase
+      .from('customerinfo')
+      .select('CustomerID, CirculationQuantity');
+
+    const quotaMap = customers?.reduce((acc, cur) => {
+      acc[cur.CustomerID] = cur.CirculationQuantity;
+      return acc;
+    }, {}) || {};
+    setQuotasMap(quotaMap);
+  };
+
+  const recommendRest = async (userid, child1_dob, child2_dob) => {
+    const selectedCount = futuresMap[userid] || 0;
+    const quota = quotasMap[userid] || 0;
+    const remaining = quota - selectedCount;
+    if (remaining <= 0) return;
+
+    const today = new Date();
+    const childAges = [];
+    if (child1_dob) {
+      const age1 = Math.floor((today - new Date(child1_dob)) / (365.25 * 24 * 60 * 60 * 1000));
+      childAges.push(age1);
+    }
+    if (child2_dob) {
+      const age2 = Math.floor((today - new Date(child2_dob)) / (365.25 * 24 * 60 * 60 * 1000));
+      childAges.push(age2);
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: admin } = await supabase.from('admininfo').select('AdminLocation').eq('AdminID', user.id).single();
-    const loc = admin?.AdminLocation || '';
-    setLocation(loc);
-
-    const { data: existingCopies } = await supabase
-      .from('copyinfo')
+    const filters = childAges.map(age => `and(MinAge.lte.${age},MaxAge.gte.${age})`).join(',');
+    const { data: books } = await supabase
+      .from('catalog')
       .select('*')
-      .eq('ISBN13', isbn)
-      .eq('CopyLocation', loc);
+      .or(filters)
+      .limit(remaining)
+      .order('random');
 
-    setCopyNumber((existingCopies?.length || 0) + 1);
-  };
-
-  const handleTagChange = (tagName) => {
-    if (selectedTags.includes(tagName)) {
-      setSelectedTags(selectedTags.filter((t) => t !== tagName));
-    } else {
-      setSelectedTags([...selectedTags, tagName]);
+    for (const book of books) {
+      await supabase.from('circulationfuture').insert({
+        userid,
+        ISBN13: book.ISBN13,
+        CopyNumber: 0,
+        SerialNumberOfIssue: 0,
+      });
     }
-  };
-
-  const handleThumbnailUpload = async () => {
-    if (!thumbnailFile) return book.Thumbnail || '';
-
-    const fileExt = thumbnailFile.name.split('.').pop();
-    const fileName = `${isbn}_${Date.now()}.${fileExt}`;
-    const filePath = `thumbnails/covers/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage.from('bookassets').upload(filePath, thumbnailFile);
-    if (uploadError) {
-      setMessage('Thumbnail upload failed: ' + uploadError.message);
-      return '';
-    }
-
-    const { data } = supabase.storage.from('bookassets').getPublicUrl(filePath);
-    return data.publicUrl;
-  };
-
-  const handleAdd = async () => {
-    if (!book) return;
-    const thumbnailUrl = await handleThumbnailUpload();
-    const newBook = {
-      ...book,
-      Tags: selectedTags.join(','),
-      ISBN13: isbn,
-      MinAge: book.MinAge || 0,
-      MaxAge: book.MaxAge || 18,
-      Thumbnail: thumbnailUrl,
-    };
-
-    const { error: catalogError } = await supabase.from('catalog').upsert(newBook);
-    if (catalogError) return setMessage('Error adding to catalog: ' + catalogError.message);
-
-    const copyID = Date.now().toString();
-    const { error: copyError } = await supabase.from('copyinfo').insert({
-      CopyID: copyID,
-      ISBN13: isbn,
-      CopyNumber: copyNumber,
-      CopyLocation: location,
-      CopyLocationID: copyLocationID,
-      BuyPrice: buyPrice,
-      AskPrice: askPrice,
-      CopyBooked: false,
-    });
-
-    if (copyError) return setMessage('Error adding copy: ' + copyError.message);
-
-    setMessage('✅ Book and copy added successfully!');
-    setBook(null);
-    setThumbnailFile(null);
-    setThumbnailPreview(null);
-    setSelectedTags([]);
-    setCopyLocationID('');
-    setBuyPrice('');
-    setAskPrice('');
-  };
-
-  const startScan = () => setShowScanner(true);
-  const stopScan = async () => {
-    if (scanner) {
-      try { await scanner.stop(); } catch (e) { console.warn('Scanner stop error', e); }
-      setScanner(null);
-    }
-    const el = document.getElementById('isbn-scanner');
-    if (el) el.innerHTML = '';
-    setShowScanner(false);
+    alert(`${remaining} recommended books added!`);
+    fetchUpcomingDeliveries();
   };
 
   useEffect(() => {
-    const initScanner = async () => {
-      if (showScanner && !scanner && document.getElementById('isbn-scanner')) {
-        const newScanner = new Html5Qrcode('isbn-scanner');
-        setScanner(newScanner);
-        try {
-          await newScanner.start(
-            { facingMode: 'environment' },
-            { fps: 10, qrbox: 250 },
-            (decodedText) => {
-              setIsbn(decodedText);
-              stopScan();
-            },
-            (err) => console.warn('Scan error', err)
-          );
-        } catch (err) {
-          console.error('Scanner init failed', err);
-          stopScan();
-        }
-      }
-    };
-    initScanner();
-  }, [showScanner]);
+    fetchRequests();
+    fetchMembershipInfo();
+    fetchUpcomingDeliveries();
+  }, []);
+
+  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
+  if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
 
   return (
-    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
-      <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
+    <div className="p-6 max-w-7xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
+      {/* sign-up requests table unchanged */}
 
-      {/* Title Search Box */}
-      <div className="mb-2">
-        <input
-          type="text"
-          value={titleSearch}
-          onChange={(e) => setTitleSearch(e.target.value)}
-          placeholder="Search by Title"
-          className="w-full p-2 border border-gray-300 rounded"
-        />
-        {titleSuggestions.length > 0 && (
-          <ul className="border border-gray-300 bg-white rounded mt-1 max-h-40 overflow-y-auto">
-            {titleSuggestions.map((item) => (
-              <li
-                key={item.ISBN13}
-                className="p-2 hover:bg-blue-100 cursor-pointer text-sm"
-                onClick={() => {
-                  setIsbn(item.ISBN13);
-                  setTitleSearch(item.Title);
-                  setTitleSuggestions([]);
-                }}
-              >
-                {item.Title}
-              </li>
-            ))}
-          </ul>
+      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
+      <ul className="list-disc list-inside text-sm">
+        {upcomingDeliveries.length === 0 ? (
+          <li>No deliveries scheduled in next 7 days.</li>
+        ) : (
+          upcomingDeliveries.map((d, idx) => (
+            <li key={idx} className="mb-2">
+              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — Next delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong>
+              <div className="ml-6">
+                {futuresMap[d.userid] || 0} of {quotasMap[d.userid] || 0} books selected
+                <button
+                  className="ml-4 px-2 py-1 bg-blue-500 text-white text-xs rounded"
+                  onClick={() => recommendRest(d.userid, d.child1_dob, d.child2_dob)}
+                >
+                  Recommend Rest
+                </button>
+              </div>
+            </li>
+          ))
         )}
-      </div>
-
-      {/* ISBN Search */}
-      <div className="flex gap-2 mb-2">
-        <input
-          type="text"
-          value={isbn}
-          onChange={(e) => setIsbn(e.target.value)}
-          placeholder="Enter ISBN13"
-          className="w-full p-2 border border-gray-300 rounded"
-        />
-        <button onClick={startScan} className="bg-purple-600 text-white px-3 rounded">📷</button>
-      </div>
-
-      <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
-
-      {/* The rest of your form remains unchanged (book form, thumbnail, tags, etc.) */}
-      {/* ... keep all original JSX content here ... */}
-
-      {message && <p className="mt-4 text-green-700 text-center font-semibold">{message}</p>}
-
-      {showScanner && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center">
-          <div className="bg-white p-4 rounded shadow max-w-sm w-full relative">
-            <button
-              onClick={stopScan}
-              className="absolute top-1 right-2 text-red-600 text-xl"
-            >✖</button>
-            <p className="text-center text-sm font-medium mb-2">Scan ISBN Barcode</p>
-            <div id="isbn-scanner" className="w-full h-[300px]"></div>
-          </div>
-        </div>
-      )}
+      </ul>
     </div>
   );
 }
