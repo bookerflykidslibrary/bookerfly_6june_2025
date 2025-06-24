@@ -159,7 +159,6 @@ export default function Catalog({ user }) {
     }
 
     const readSet = new Set((hiddenRead || []).map(id => id?.trim().toLowerCase()));
-
     const filteredBooks = catalogBooks.filter(book => {
       const isbn = book.ISBN13?.trim().toLowerCase();
       return isbn && availabilityMap[book.ISBN13] && !readSet.has(isbn);
@@ -251,7 +250,17 @@ export default function Catalog({ user }) {
             </p>
         )}
 
-        {loading ? <p>Loading...</p> : (
+        {loading ? (
+            <p>Loading...</p>
+        ) : books.length === 0 ? (
+            <div className="flex flex-col items-center mt-12 animate-fade-in">
+              <div className="text-6xl mb-4">📚❓</div>
+              <h2 className="text-xl font-semibold text-gray-700">No books found</h2>
+              <p className="text-sm text-gray-500 mt-1 text-center max-w-md">
+                Try adjusting your filters, or check back later — we're always adding more stories to our shelves!
+              </p>
+            </div>
+        ) : (
             <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {books.map(book => (
                   <div key={book.BookID} className="bg-white rounded-xl p-4 shadow-md flex flex-col">
