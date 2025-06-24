@@ -63,8 +63,9 @@ export default function AdminSignUpRequests() {
 
   const fetchUpcomingDeliveries = async () => {
     const { data, error } = await supabase.rpc('get_upcoming_deliveries_7_days');
+
     if (error) {
-      console.error('Upcoming deliveries fetch error:', error.message);
+      console.error('Delivery fetch error:', error.message);
     } else {
       setUpcomingDeliveries(data || []);
     }
@@ -148,14 +149,14 @@ export default function AdminSignUpRequests() {
         )}
       </ul>
 
-      <h2 className="text-xl font-bold mb-2 text-green-700">📚 Upcoming Deliveries in Next 7 Days</h2>
+      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
       <ul className="list-disc list-inside text-sm">
         {upcomingDeliveries.length === 0 ? (
-          <li>No upcoming deliveries.</li>
+          <li>No deliveries scheduled in next 7 days.</li>
         ) : (
           upcomingDeliveries.map((d, idx) => (
             <li key={idx}>
-              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — <em>{d.Title}</em> — Deliver on <strong>{new Date(d.EstimatedDeliveryDate).toLocaleDateString()}</strong>
+              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — Next delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong>
             </li>
           ))
         )}
