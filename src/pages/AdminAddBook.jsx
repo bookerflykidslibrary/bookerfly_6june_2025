@@ -1,8 +1,7 @@
 // AdminAddBook.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import supabase from '../utils/supabaseClient';
-import imageCompression from 'browser-image-compression';
 
 const CATEGORY_AGE_MAP = {
   'Juvenile Fiction': { min: 8, max: 12 },
@@ -29,7 +28,6 @@ export default function AdminAddBook() {
   const [message, setMessage] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   const [scanner, setScanner] = useState(null);
-  const fileInputRef = useRef();
 
   useEffect(() => {
     const fetchTagsAndLocations = async () => {
@@ -53,45 +51,6 @@ export default function AdminAddBook() {
     return json.items?.[0]?.volumeInfo;
   };
 
-  const handleCaptureClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleCaptureAndUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file || !isbn) return;
-
-    try {
-      const compressedFile = await imageCompression(file, {
-        maxSizeMB: 0.2,
-        maxWidthOrHeight: 800,
-        useWebWorker: true,
-      });
-
-      const fileExt = compressedFile.name.split('.').pop();
-      const fileName = `${isbn}_${Date.now()}.${fileExt}`;
-      const filePath = `thumbnails/covers/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage.from('bookassets').upload(filePath, compressedFile);
-      if (uploadError) {
-        setMessage('Thumbnail upload failed: ' + uploadError.message);
-        return;
-      }
-
-      const { data } = supabase.storage.from('bookassets').getPublicUrl(filePath);
-      setThumbnailPreview(URL.createObjectURL(file));
-      setThumbnailFile(null);
-
-      if (book) {
-        setBook(prev => ({ ...prev, Thumbnail: data.publicUrl }));
-      }
-      setMessage('📷 Thumbnail uploaded successfully!');
-    } catch (err) {
-      console.error('Image capture/upload error', err);
-      setMessage('Image compression or upload failed');
-    }
-  };
-
   const handleSearch = async () => {
     setMessage('');
     const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
@@ -107,13 +66,12 @@ export default function AdminAddBook() {
           minAge = CATEGORY_AGE_MAP[category].min;
           maxAge = CATEGORY_AGE_MAP[category].max;
         }
-        const thumbnailUrl = info.imageLinks?.thumbnail || '';
         setBook({
           ISBN13: isbn,
           Title: info.title || '',
           Authors: info.authors?.join(', ') || '',
           Description: info.description || '',
-          Thumbnail: thumbnailUrl,
+          Thumbnail: info.imageLinks?.thumbnail || '',
           MinAge: minAge,
           MaxAge: maxAge,
           Reviews: '',
@@ -121,8 +79,6 @@ export default function AdminAddBook() {
         });
       } else {
         setMessage('Google Books info not found. You can still enter details manually.');
-        alert('No info or thumbnail found. Please click a photo of the book cover.');
-        document.getElementById('thumbnail-upload')?.scrollIntoView({ behavior: 'smooth' });
         setBook({
           ISBN13: isbn,
           Title: '',
@@ -151,32 +107,242 @@ export default function AdminAddBook() {
     setCopyNumber((existingCopies?.length || 0) + 1);
   };
 
-  return (
-      <div className="space-y-2">
-        {thumbnailPreview ? (
-            <img src={thumbnailPreview} alt="Thumbnail Preview" className="w-24 h-auto rounded" />
-        ) : (
-            book?.Thumbnail && <img src={book.Thumbnail} alt="thumbnail" className="w-24 h-auto rounded" />
-        )}
+  const handleTagChange = (tagName) => {
+    if (selectedTags.includes(tagName)) {
+      setSelectedTags(selectedTags.filter((t) => t !== tagName));
+    } else {
+      setSelectedTags([...selectedTags, tagName]);
+    }
+  };
 
-        <div className="flex items-center gap-2">
-          <button
-              type="button"
-              onClick={handleCaptureClick}
-              className="bg-yellow-600 text-white px-3 py-1 rounded text-sm"
-          >
-            📷 Capture/Upload New Thumbnail
-          </button>
-          <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              style={{ display: 'none' }}
-              onChange={handleCaptureAndUpload}
-              id="thumbnail-upload"
+  const handleThumbnailUpload = async () => {
+    if (!thumbnailFile) return book.Thumbnail || '';
+
+    const fileExt = thumbnailFile.name.split('.').pop();
+    const fileName = `${isbn}_${Date.now()}.${fileExt}`;
+    const filePath = `thumbnails/covers/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage.from('bookassets').upload(filePath, thumbnailFile);
+    if (uploadError) {
+      setMessage('Thumbnail upload failed: ' + uploadError.message);
+      return '';
+    }
+
+    const { data } = supabase.storage.from('bookassets').getPublicUrl(filePath);
+    return data.publicUrl;
+  };
+
+  const handleAdd = async () => {
+    if (!book) return;
+    const thumbnailUrl = await handleThumbnailUpload();
+    const newBook = {
+      ...book,
+      Tags: selectedTags.join(','),
+      ISBN13: isbn,
+      MinAge: book.MinAge || 0,
+      MaxAge: book.MaxAge || 18,
+      Thumbnail: thumbnailUrl,
+    };
+
+    const { error: catalogError } = await supabase.from('catalog').upsert(newBook);
+    if (catalogError) return setMessage('Error adding to catalog: ' + catalogError.message);
+
+    const copyID = Date.now().toString();
+    const { error: copyError } = await supabase.from('copyinfo').insert({
+      CopyID: copyID,
+      ISBN13: isbn,
+      CopyNumber: copyNumber,
+      CopyLocation: location,
+      CopyLocationID: copyLocationID,
+      BuyPrice: buyPrice,
+      AskPrice: askPrice,
+      CopyBooked: false,
+    });
+
+    if (copyError) return setMessage('Error adding copy: ' + copyError.message);
+
+    setMessage('✅ Book and copy added successfully!');
+    setBook(null);
+    setThumbnailFile(null);
+    setThumbnailPreview(null);
+    setSelectedTags([]);
+    setCopyLocationID('');
+    setBuyPrice('');
+    setAskPrice('');
+  };
+
+  const startScan = () => setShowScanner(true);
+  const stopScan = async () => {
+    if (scanner) {
+      try { await scanner.stop(); } catch (e) { console.warn('Scanner stop error', e); }
+      setScanner(null);
+    }
+    const el = document.getElementById('isbn-scanner');
+    if (el) el.innerHTML = '';
+    setShowScanner(false);
+  };
+
+  useEffect(() => {
+    const initScanner = async () => {
+      if (showScanner && !scanner && document.getElementById('isbn-scanner')) {
+        const newScanner = new Html5Qrcode('isbn-scanner');
+        setScanner(newScanner);
+        try {
+          await newScanner.start(
+              { facingMode: 'environment' },
+              { fps: 10, qrbox: 250 },
+              (decodedText) => {
+                setIsbn(decodedText);
+                stopScan();
+              },
+              (err) => console.warn('Scan error', err)
+          );
+        } catch (err) {
+          console.error('Scanner init failed', err);
+          stopScan();
+        }
+      }
+    };
+    initScanner();
+  }, [showScanner]);
+
+  return (
+      <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
+        <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
+
+      <div className="flex gap-2 mb-2">
+        <input
+          type="text"
+          value={isbn}
+          onChange={(e) => setIsbn(e.target.value)}
+          placeholder="Enter ISBN13"
+          className="w-full p-2 border border-gray-300 rounded"
+        />
+        <button onClick={startScan} className="bg-purple-600 text-white px-3 rounded">📷</button>
+      </div>
+
+      <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
+
+      {book && (
+        <div className="space-y-2">
+          {['ISBN13', 'Title', 'Authors', 'MinAge', 'MaxAge', 'Reviews'].map((field) => (
+            <input
+              key={field}
+              type="text"
+              value={book[field] || ''}
+              onChange={(e) => setBook({ ...book, [field]: e.target.value })}
+              placeholder={field}
+              className="w-full p-2 border border-gray-300 rounded"
+            />
+          ))}
+
+          <textarea
+            value={book.Description || ''}
+            onChange={(e) => setBook({ ...book, Description: e.target.value })}
+            placeholder="Description"
+            rows={6}
+            className="w-full p-2 border border-gray-300 rounded resize-y"
           />
+
+          {thumbnailPreview ? (
+            <img src={thumbnailPreview} alt="Thumbnail Preview" className="w-24 h-auto rounded" />
+          ) : (
+            book.Thumbnail && (
+              <img src={book.Thumbnail} alt="thumbnail" className="w-24 h-auto rounded" />
+            )
+          )}
+
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files[0];
+              setThumbnailFile(file);
+              setThumbnailPreview(file ? URL.createObjectURL(file) : null);
+            }}
+            className="w-full p-2 border border-gray-300 rounded"
+          />
+
+          <label className="block mt-2 text-sm font-semibold">Location</label>
+          <select
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded"
+          >
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.LocationName}>{loc.LocationName}</option>
+            ))}
+          </select>
+
+          <label className="block text-sm font-semibold">Copy Location ID</label>
+          <input
+            type="text"
+            value={copyLocationID}
+            onChange={(e) => setCopyLocationID(e.target.value)}
+            placeholder="Enter Copy Location ID"
+            className="w-full p-2 border border-gray-300 rounded"
+          />
+
+          <label className="block text-sm font-semibold">Buy Price</label>
+          <input
+            type="number"
+            value={buyPrice}
+            onChange={(e) => setBuyPrice(e.target.value)}
+            placeholder="Enter Buy Price"
+            className="w-full p-2 border border-gray-300 rounded"
+          />
+
+          <label className="block text-sm font-semibold">Ask Price</label>
+          <input
+            type="number"
+            value={askPrice}
+            onChange={(e) => setAskPrice(e.target.value)}
+            placeholder="Enter Ask Price"
+            className="w-full p-2 border border-gray-300 rounded"
+          />
+
+          <div className="mt-2">
+            <p className="font-semibold">Tags:</p>
+            <div className="grid grid-cols-2 gap-2">
+              {tags.map((tag) => (
+                <label key={tag.id} className="text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedTags.includes(tag.TagName)}
+                    onChange={() => handleTagChange(tag.TagName)}
+                    className="mr-2"
+                  />
+                  {tag.TagName}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <p className="mt-2 text-sm">Next Copy Number: <strong>{copyNumber}</strong></p>
+
+          <button
+            onClick={handleAdd}
+            className="w-full mt-4 bg-green-600 text-white py-2 rounded"
+          >
+            Confirm & Add Book
+          </button>
         </div>
+      )}
+
+      {message && <p className="mt-4 text-green-700 text-center font-semibold">{message}</p>}
+
+      {showScanner && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center">
+          <div className="bg-white p-4 rounded shadow max-w-sm w-full relative">
+            <button
+              onClick={stopScan}
+              className="absolute top-1 right-2 text-red-600 text-xl"
+            >✖</button>
+            <p className="text-center text-sm font-medium mb-2">Scan ISBN Barcode</p>
+            <div id="isbn-scanner" className="w-full h-[300px]"></div>
+          </div>
+        </div>
+      )}
       </div>
   );
 }
