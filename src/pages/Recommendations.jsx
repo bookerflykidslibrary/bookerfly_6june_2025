@@ -14,7 +14,6 @@ const CATEGORY_AGE_MAP = {
 
 export default function AdminAddBook() {
   const [isbn, setIsbn] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
   const [book, setBook] = useState(null);
   const [tags, setTags] = useState([]);
   const [thumbnailFile, setThumbnailFile] = useState(null);
@@ -29,6 +28,8 @@ export default function AdminAddBook() {
   const [message, setMessage] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   const [scanner, setScanner] = useState(null);
+  const [titleQuery, setTitleQuery] = useState('');
+  const [titleSuggestions, setTitleSuggestions] = useState([]);
 
   useEffect(() => {
     const fetchTagsAndLocations = async () => {
@@ -54,7 +55,6 @@ export default function AdminAddBook() {
 
   const handleSearch = async () => {
     setMessage('');
-    setSuggestions([]);
     const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
 
     if (catalogData) {
@@ -109,27 +109,29 @@ export default function AdminAddBook() {
     setCopyNumber((existingCopies?.length || 0) + 1);
   };
 
-  const handleIsbnInput = async (e) => {
-    const val = e.target.value;
-    setIsbn(val);
-    setSuggestions([]);
-
-    if (val.length < 3) return;
-
-    const { data } = await supabase
-      .from('catalog')
-      .select('ISBN13, Title')
-      .or(`Title.ilike.%${val}%,ISBN13.ilike.%${val}%`)
-      .limit(5);
-
-    if (data) {
-      setSuggestions(data);
+  const handleTagChange = (tagName) => {
+    if (selectedTags.includes(tagName)) {
+      setSelectedTags(selectedTags.filter((t) => t !== tagName));
+    } else {
+      setSelectedTags([...selectedTags, tagName]);
     }
   };
 
-  const handleSelectSuggestion = (isbnValue) => {
-    setIsbn(isbnValue);
-    setSuggestions([]);
+  const handleThumbnailUpload = async () => {
+    if (!thumbnailFile) return book.Thumbnail || '';
+
+    const fileExt = thumbnailFile.name.split('.').pop();
+    const fileName = `${isbn}_${Date.now()}.${fileExt}`;
+    const filePath = `thumbnails/covers/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage.from('bookassets').upload(filePath, thumbnailFile);
+    if (uploadError) {
+      setMessage('Thumbnail upload failed: ' + uploadError.message);
+      return '';
+    }
+
+    const { data } = supabase.storage.from('bookassets').getPublicUrl(filePath);
+    return data.publicUrl;
   };
 
   const handleAdd = async () => {
@@ -171,28 +173,10 @@ export default function AdminAddBook() {
     setAskPrice('');
   };
 
-  const handleThumbnailUpload = async () => {
-    if (!thumbnailFile) return book.Thumbnail || '';
-    const fileExt = thumbnailFile.name.split('.').pop();
-    const fileName = `${isbn}_${Date.now()}.${fileExt}`;
-    const filePath = `thumbnails/covers/${fileName}`;
-    const { error: uploadError } = await supabase.storage.from('bookassets').upload(filePath, thumbnailFile);
-    if (uploadError) {
-      setMessage('Thumbnail upload failed: ' + uploadError.message);
-      return '';
-    }
-    const { data } = supabase.storage.from('bookassets').getPublicUrl(filePath);
-    return data.publicUrl;
-  };
-
   const startScan = () => setShowScanner(true);
   const stopScan = async () => {
     if (scanner) {
-      try {
-        await scanner.stop();
-      } catch (e) {
-        console.warn('Scanner stop error', e);
-      }
+      try { await scanner.stop(); } catch (e) { console.warn('Scanner stop error', e); }
       setScanner(null);
     }
     const el = document.getElementById('isbn-scanner');
@@ -224,29 +208,45 @@ export default function AdminAddBook() {
     initScanner();
   }, [showScanner]);
 
+  const handleTitleInput = async (e) => {
+    const value = e.target.value;
+    setTitleQuery(value);
+    if (value.length < 3) return setTitleSuggestions([]);
+
+    const { data, error } = await supabase
+      .from('catalog')
+      .select('Title, ISBN13')
+      .ilike('Title', `%${value}%`)
+      .limit(5);
+
+    if (!error) setTitleSuggestions(data || []);
+  };
+
+  const handleTitleSelect = (selectedIsbn, selectedTitle) => {
+    setIsbn(selectedIsbn);
+    setTitleQuery(selectedTitle);
+    setTitleSuggestions([]);
+  };
+
   return (
     <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
       <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
 
-      <div className="relative">
-        <div className="flex gap-2 mb-2">
-          <input
-            type="text"
-            value={isbn}
-            onChange={handleIsbnInput}
-            placeholder="Enter ISBN13 or Title"
-            className="w-full p-2 border border-gray-300 rounded"
-          />
-          <button onClick={startScan} className="bg-purple-600 text-white px-3 rounded">📷</button>
-        </div>
-
-        {suggestions.length > 0 && (
-          <ul className="absolute bg-white border border-gray-300 rounded w-full z-10 max-h-48 overflow-auto">
-            {suggestions.map((s) => (
+      <div className="mb-2 relative">
+        <input
+          type="text"
+          value={titleQuery}
+          onChange={handleTitleInput}
+          placeholder="Search by title"
+          className="w-full p-2 border border-gray-300 rounded"
+        />
+        {titleSuggestions.length > 0 && (
+          <ul className="absolute bg-white border border-gray-300 rounded w-full z-10 max-h-40 overflow-y-auto">
+            {titleSuggestions.map((s) => (
               <li
                 key={s.ISBN13}
-                onClick={() => handleSelectSuggestion(s.ISBN13)}
-                className="p-2 hover:bg-gray-100 cursor-pointer text-sm"
+                onClick={() => handleTitleSelect(s.ISBN13, s.Title)}
+                className="p-2 text-sm hover:bg-gray-100 cursor-pointer"
               >
                 {s.Title} ({s.ISBN13})
               </li>
@@ -255,10 +255,20 @@ export default function AdminAddBook() {
         )}
       </div>
 
+      <div className="flex gap-2 mb-2">
+        <input
+          type="text"
+          value={isbn}
+          onChange={(e) => setIsbn(e.target.value)}
+          placeholder="Enter ISBN13"
+          className="w-full p-2 border border-gray-300 rounded"
+        />
+        <button onClick={startScan} className="bg-purple-600 text-white px-3 rounded">📷</button>
+      </div>
+
       <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
 
-      {/* Keep your book input form and scanner modal here as-is */}
-      {/* … everything else is unchanged … */}
+      {/* Remaining UI is unchanged */}
     </div>
   );
 }
