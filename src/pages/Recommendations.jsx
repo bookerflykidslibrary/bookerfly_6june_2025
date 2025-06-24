@@ -1,268 +1,141 @@
-import React, { useState, useEffect } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 
-export default function AdminAddBook() {
-  const [isbn, setIsbn] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [book, setBook] = useState(null);
-  const [tags, setTags] = useState([]);
-  const [thumbnailFile, setThumbnailFile] = useState(null);
-  const [thumbnailPreview, setThumbnailPreview] = useState(null);
-  const [selectedTags, setSelectedTags] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [location, setLocation] = useState('');
-  const [copyNumber, setCopyNumber] = useState(1);
-  const [copyLocationID, setCopyLocationID] = useState('');
-  const [buyPrice, setBuyPrice] = useState('');
-  const [askPrice, setAskPrice] = useState('');
-  const [message, setMessage] = useState('');
-  const [showScanner, setShowScanner] = useState(false);
-  const [scanner, setScanner] = useState(null);
+export default function AdminSignUpRequests() {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expiringSoon, setExpiringSoon] = useState([]);
+  const [expiredMembers, setExpiredMembers] = useState([]);
+
+  const fetchRequests = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('SignUpRequests')
+      .select('*')
+      .neq('status', 'APPROVED')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Fetch error:', error.message);
+      setError(error);
+    } else {
+      setRequests(data);
+    }
+    setLoading(false);
+  };
+
+  const updateStatus = async (id, newStatus) => {
+    const { error } = await supabase
+      .from('SignUpRequests')
+      .update({ status: newStatus })
+      .eq('id', id);
+
+    if (error) {
+      alert(`Status update failed: ${error.message}`);
+    } else {
+      fetchRequests();
+    }
+  };
+
+  const fetchMembershipInfo = async () => {
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+
+    const { data: soonExpiring } = await supabase
+      .from('customerinfo')
+      .select('CustomerName, EmailID, ContactNo, EndDate')
+      .gte('EndDate', today.toISOString())
+      .lte('EndDate', nextWeek.toISOString())
+      .order('EndDate');
+
+    const { data: alreadyExpired } = await supabase
+      .from('customerinfo')
+      .select('CustomerName, EmailID, ContactNo, EndDate')
+      .lt('EndDate', today.toISOString())
+      .order('EndDate');
+
+    setExpiringSoon(soonExpiring || []);
+    setExpiredMembers(alreadyExpired || []);
+  };
 
   useEffect(() => {
-    const fetchTagsAndLocations = async () => {
-      const { data: tagList } = await supabase.from('tags').select('*');
-      setTags(tagList || []);
-      const { data: locationList } = await supabase.from('locations').select('*');
-      setLocations(locationList || []);
-    };
-    fetchTagsAndLocations();
+    fetchRequests();
+    fetchMembershipInfo();
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (thumbnailPreview) {
-        URL.revokeObjectURL(thumbnailPreview);
-      }
-    };
-  }, [thumbnailPreview]);
-
-  useEffect(() => {
-    const fetchSuggestions = async () => {
-      if (isbn.length < 2) return setSuggestions([]);
-      const { data } = await supabase
-        .from('catalog')
-        .select('ISBN13, Title')
-        .or(`Title.ilike.%${isbn}%,ISBN13.ilike.%${isbn}%`)
-        .limit(10);
-      setSuggestions(data || []);
-    };
-    fetchSuggestions();
-  }, [isbn]);
-
-  const fetchFromGoogleBooks = async (isbn) => {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-    const json = await res.json();
-    return json.items?.[0]?.volumeInfo;
-  };
-
-  const handleSearch = async () => {
-    setMessage('');
-    const { data: catalogData } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
-
-    if (catalogData) {
-      setBook(catalogData);
-    } else {
-      const info = await fetchFromGoogleBooks(isbn);
-      if (info) {
-        setBook({
-          ISBN13: isbn,
-          Title: info.title || '',
-          Authors: info.authors?.join(', ') || '',
-          Description: info.description || '',
-          Thumbnail: info.imageLinks?.thumbnail || '',
-          MinAge: '',
-          MaxAge: '',
-          Reviews: '',
-          Tags: [],
-        });
-      } else {
-        setMessage('Google Books info not found. You can still enter details manually.');
-        setBook({
-          ISBN13: isbn,
-          Title: '',
-          Authors: '',
-          Description: '',
-          Thumbnail: '',
-          MinAge: '',
-          MaxAge: '',
-          Reviews: '',
-          Tags: [],
-        });
-      }
-    }
-
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: admin } = await supabase
-      .from('admininfo')
-      .select('AdminLocation')
-      .eq('AdminID', user.id)
-      .single();
-
-    const loc = admin?.AdminLocation || '';
-    setLocation(loc);
-
-    const { data: existingCopies } = await supabase
-      .from('copyinfo')
-      .select('*')
-      .eq('ISBN13', isbn)
-      .eq('CopyLocation', loc);
-
-    setCopyNumber((existingCopies?.length || 0) + 1);
-  };
-
-  const handleTagChange = (tagName) => {
-    if (selectedTags.includes(tagName)) {
-      setSelectedTags(selectedTags.filter((t) => t !== tagName));
-    } else {
-      setSelectedTags([...selectedTags, tagName]);
-    }
-  };
-
-  const handleThumbnailUpload = async () => {
-    if (!thumbnailFile) return book.Thumbnail || '';
-
-    const fileExt = thumbnailFile.name.split('.').pop();
-    const fileName = `${isbn}_${Date.now()}.${fileExt}`;
-    const filePath = `thumbnails/covers/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('bookassets')
-      .upload(filePath, thumbnailFile);
-
-    if (uploadError) {
-      setMessage('Thumbnail upload failed: ' + uploadError.message);
-      return '';
-    }
-
-    const { data } = supabase.storage.from('bookassets').getPublicUrl(filePath);
-    return data.publicUrl;
-  };
-
-  const handleAdd = async () => {
-    if (!book) return;
-
-    const thumbnailUrl = await handleThumbnailUpload();
-
-    const newBook = {
-      ...book,
-      Tags: selectedTags.join(','),
-      ISBN13: isbn,
-      MinAge: book.MinAge || 0,
-      MaxAge: book.MaxAge || 18,
-      Thumbnail: thumbnailUrl,
-    };
-
-    const { error: catalogError } = await supabase.from('catalog').upsert(newBook);
-    if (catalogError) return setMessage('Error adding to catalog: ' + catalogError.message);
-
-    const copyID = Date.now().toString();
-
-    const { error: copyError } = await supabase.from('copyinfo').insert({
-      CopyID: copyID,
-      ISBN13: isbn,
-      CopyNumber: copyNumber,
-      CopyLocation: location,
-      CopyLocationID: copyLocationID,
-      BuyPrice: buyPrice,
-      AskPrice: askPrice,
-      CopyBooked: false,
-    });
-
-    if (copyError) return setMessage('Error adding copy: ' + copyError.message);
-
-    setMessage('✅ Book and copy added successfully!');
-    setBook(null);
-    setThumbnailFile(null);
-    setThumbnailPreview(null);
-    setSelectedTags([]);
-    setCopyLocationID('');
-    setBuyPrice('');
-    setAskPrice('');
-  };
-
-  const startScan = () => {
-    setShowScanner(true);
-  };
-
-  const stopScan = async () => {
-    if (scanner) {
-      try {
-        await scanner.stop();
-      } catch (e) {
-        console.warn('Scanner stop error', e);
-      }
-      setScanner(null);
-    }
-    const el = document.getElementById('isbn-scanner');
-    if (el) el.innerHTML = '';
-    setShowScanner(false);
-  };
-
-  useEffect(() => {
-    const initScanner = async () => {
-      if (showScanner && !scanner && document.getElementById('isbn-scanner')) {
-        const newScanner = new Html5Qrcode('isbn-scanner');
-        setScanner(newScanner);
-
-        try {
-          await newScanner.start(
-            { facingMode: 'environment' },
-            { fps: 10, qrbox: 250 },
-            (decodedText) => {
-              setIsbn(decodedText);
-              stopScan();
-            },
-            (err) => {
-              console.warn('Scan error', err);
-            }
-          );
-        } catch (err) {
-          console.error('Scanner init failed', err);
-          stopScan();
-        }
-      }
-    };
-    initScanner();
-  }, [showScanner]);
+  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
+  if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
 
   return (
-    <div className="max-w-md mx-auto p-4 bg-white rounded shadow mt-8 relative">
-      <h2 className="text-2xl font-bold text-center text-blue-700 mb-4">Add Book by ISBN</h2>
-
-      <div className="flex gap-2 mb-2 relative">
-        <input
-          type="text"
-          value={isbn}
-          onChange={(e) => setIsbn(e.target.value)}
-          placeholder="Enter ISBN13 or Title"
-          className="w-full p-2 border border-gray-300 rounded"
-        />
-        <button onClick={startScan} className="bg-purple-600 text-white px-3 rounded">📷</button>
-        {suggestions.length > 0 && (
-          <ul className="absolute top-full left-0 right-0 bg-white border z-10 max-h-48 overflow-auto">
-            {suggestions.map((s) => (
-              <li
-                key={s.ISBN13}
-                onClick={() => {
-                  setIsbn(s.ISBN13);
-                  setSuggestions([]);
-                }}
-                className="p-2 hover:bg-blue-100 cursor-pointer"
-              >
-                {s.Title} — {s.ISBN13}
-              </li>
+    <div className="p-6 max-w-7xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
+      <div className="overflow-x-auto mb-8">
+        <table className="min-w-full border border-gray-300 text-sm">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="border p-2">Name</th>
+              <th className="border p-2">Email</th>
+              <th className="border p-2">Phone</th>
+              <th className="border p-2">Child 1</th>
+              <th className="border p-2">DOB 1</th>
+              <th className="border p-2">Child 2</th>
+              <th className="border p-2">DOB 2</th>
+              <th className="border p-2">Address</th>
+              <th className="border p-2">Message</th>
+              <th className="border p-2">Status</th>
+              <th className="border p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((r) => (
+              <tr key={r.id}>
+                <td className="border p-2">{r.name}</td>
+                <td className="border p-2">{r.email}</td>
+                <td className="border p-2">{r.phone}</td>
+                <td className="border p-2">{r.child1_name}</td>
+                <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
+                <td className="border p-2">{r.child2_name}</td>
+                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
+                <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
+                <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
+                <td className="border p-2 text-center">{r.status}</td>
+                <td className="border p-2 space-x-2">
+                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
+                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
+                </td>
+              </tr>
             ))}
-          </ul>
-        )}
+          </tbody>
+        </table>
       </div>
 
-      <button onClick={handleSearch} className="w-full bg-blue-600 text-white py-2 rounded mb-4">Search</button>
+      <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
+      <ul className="list-disc list-inside text-sm mb-6">
+        {expiringSoon.length === 0 ? (
+          <li>No expiring memberships.</li>
+        ) : (
+          expiringSoon.map((m, idx) => (
+            <li key={idx}>
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
+            </li>
+          ))
+        )}
+      </ul>
 
-      {message && <p className="text-center text-blue-700 mb-2 font-semibold">{message}</p>}
-
-      {/* existing book editing/adding UI here */}
+      <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
+      <ul className="list-disc list-inside text-sm">
+        {expiredMembers.length === 0 ? (
+          <li>No expired memberships.</li>
+        ) : (
+          expiredMembers.map((m, idx) => (
+            <li key={idx}>
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
+            </li>
+          ))
+        )}
+      </ul>
     </div>
   );
 }
