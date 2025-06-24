@@ -155,7 +155,7 @@ export default function AdminSignUpRequests() {
         ) : (
           upcomingDeliveries.map((d, idx) => (
             <li key={idx}>
-              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.Title} — Deliver on <strong>{new Date(d.EstimatedDeliveryDate).toLocaleDateString()}</strong>
+              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — <em>{d.Title}</em> — Deliver on <strong>{new Date(d.EstimatedDeliveryDate).toLocaleDateString()}</strong>
             </li>
           ))
         )}
