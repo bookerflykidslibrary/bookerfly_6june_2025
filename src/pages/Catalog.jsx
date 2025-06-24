@@ -115,7 +115,8 @@ export default function Catalog({ user }) {
     let query = supabase
         .from('catalog')
         .select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description')
-        .limit(1000);
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
 
     if (appliedFilters) {
       const { minAge, maxAge, author, title } = appliedFilters;
