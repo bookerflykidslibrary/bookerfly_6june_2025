@@ -46,9 +46,12 @@ export default function Navbar({ user }) {
                     ))}
 
                     {user && (
-                        <span className="text-sm italic">
-              Logged in as <strong>{user.user_metadata?.name || user.email}</strong>
-            </span>
+                        <>
+                            <Link to="/change-password" className="hover:underline">Change Password</Link>
+                            <span className="text-sm italic">
+                                Logged in as <strong>{user.user_metadata?.name || user.email}</strong>
+                            </span>
+                        </>
                     )}
 
                     {user ? (
