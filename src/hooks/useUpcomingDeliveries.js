@@ -34,10 +34,12 @@ export function useUpcomingDeliveries() {
     const enriched = deliveries.map((d) => ({
       ...d,
       selectedCount: countMap[d.userid] || 0,
-      quota: d.NumberOfBooks,
-      childAge: d.Child1_Age ?? 6,
-      dob1: d.Child1_DOB,
-      dob2: d.Child2_DOB,
+      quota: d.numberofbooks ?? 0,
+      plan: d.subscriptionplan ?? '-',
+      childAge: d.child1_age ?? 6,
+      nextDate: d.nextdeliverydate ?? null,
+      dob1: d.child1_dob,
+      dob2: d.child2_dob,
     }));
 
     setUpcomingDeliveries(enriched);

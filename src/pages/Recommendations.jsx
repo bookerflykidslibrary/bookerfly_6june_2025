@@ -1,3 +1,4 @@
+// ✅ AdminSignUpRequests.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
@@ -150,9 +151,9 @@ export default function AdminSignUpRequests() {
           ) : (
             upcomingDeliveries.map((d, idx) => (
               <li key={idx}>
-                <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo}<br />
-                Plan: {d.SubscriptionPlan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
-                Next delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong>
+                <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
+                Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
+                Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
               </li>
             ))
           )}
