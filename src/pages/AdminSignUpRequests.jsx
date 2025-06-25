@@ -1,5 +1,7 @@
+// ✅ AdminSignUpRequests.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
+import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
 
 export default function AdminSignUpRequests() {
   const [requests, setRequests] = useState([]);
@@ -7,7 +9,8 @@ export default function AdminSignUpRequests() {
   const [error, setError] = useState(null);
   const [expiringSoon, setExpiringSoon] = useState([]);
   const [expiredMembers, setExpiredMembers] = useState([]);
-  const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
+
+  const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -61,20 +64,33 @@ export default function AdminSignUpRequests() {
     setExpiredMembers(alreadyExpired || []);
   };
 
-  const fetchUpcomingDeliveries = async () => {
-    const { data, error } = await supabase.rpc('get_upcoming_deliveries_7_days');
+  const handleRecommendRest = async (delivery) => {
+    try {
+      const remaining = delivery.quota - delivery.selectedCount;
+      if (remaining <= 0) return;
 
-    if (error) {
-      console.error('Delivery fetch error:', error.message);
-    } else {
-      setUpcomingDeliveries(data || []);
+      const { error } = await supabase.rpc('recommend_books_for_user', {
+        user_id: delivery.userid,
+        num_books: remaining,
+        min_age: delivery.childAge,
+        max_age: delivery.childAge,
+      });
+
+      if (error) {
+        alert(`Failed to recommend books: ${error.message}`);
+      } else {
+        alert('Recommended books successfully!');
+        refreshUpcoming();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Unexpected error.');
     }
   };
 
   useEffect(() => {
     fetchRequests();
     fetchMembershipInfo();
-    fetchUpcomingDeliveries();
   }, []);
 
   if (loading) return <div className="p-4">Loading sign-up requests...</div>;
@@ -150,17 +166,31 @@ export default function AdminSignUpRequests() {
       </ul>
 
       <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
-      <ul className="list-disc list-inside text-sm">
-        {upcomingDeliveries.length === 0 ? (
-          <li>No deliveries scheduled in next 7 days.</li>
-        ) : (
-          upcomingDeliveries.map((d, idx) => (
-            <li key={idx}>
-              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — Next delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong>
-            </li>
-          ))
-        )}
-      </ul>
+      {loadingDeliveries ? (
+        <p className="text-sm">Loading upcoming deliveries...</p>
+      ) : (
+        <ul className="list-disc list-inside text-sm">
+          {upcomingDeliveries.length === 0 ? (
+            <li>No deliveries scheduled in next 7 days.</li>
+          ) : (
+            upcomingDeliveries.map((d, idx) => (
+              <li key={idx}>
+                <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
+                Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
+                Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
+                {d.selectedCount < d.quota && (
+                  <button
+                    className="mt-1 ml-2 text-sm bg-blue-500 text-white px-2 py-1 rounded"
+                    onClick={() => handleRecommendRest(d)}
+                  >
+                    📚 Recommend Rest
+                  </button>
+                )}
+              </li>
+            ))
+          )}
+        </ul>
+      )}
     </div>
   );
 }
