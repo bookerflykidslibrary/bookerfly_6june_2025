@@ -7,31 +7,42 @@ export function useUpcomingDeliveries() {
 
   const fetchUpcoming = async () => {
     setLoading(true);
-    const { data: deliveries, error } = await supabase.rpc('get_upcoming_deliveries_7_days');
-    if (error) {
-      console.error('Delivery fetch error:', error.message);
+
+    // Step 1: Get upcoming delivery users
+    const { data: deliveries, error: deliveryError } = await supabase.rpc('get_upcoming_deliveries_7_days');
+    if (deliveryError) {
+      console.error('Delivery fetch error:', deliveryError.message);
       setUpcomingDeliveries([]);
       setLoading(false);
       return;
     }
 
-    const userIds = deliveries.map(d => d.userid);
+    const userIds = deliveries.map((d) => d.userid);
 
-    const { data: selections } = await supabase
-      .from('circulationfuture')
-      .select('userid, count:isbn13')
-      .in('userid', userIds)
-      .group('userid');
+    // Step 2: Get book count from new RPC
+    const { data: selections, error: countError } = await supabase
+      .rpc('get_circulationfuture_counts', { user_ids: userIds });
 
-    const { data: customerinfo } = await supabase
+    if (countError) {
+      console.error('Book count fetch error:', countError.message);
+    }
+
+    const countMap = Object.fromEntries((selections || []).map((s) => [s.userid, s.selected_count]));
+
+    // Step 3: Get customer info: quota and age
+    const { data: customerinfo, error: infoError } = await supabase
       .from('customerinfo')
       .select('userid, CirculationQuantity, ChildAge')
       .in('userid', userIds);
 
-    const countMap = Object.fromEntries(selections.map(s => [s.userid, s.count]));
-    const infoMap = Object.fromEntries(customerinfo.map(c => [c.userid, c]));
+    if (infoError) {
+      console.error('Customer info fetch error:', infoError.message);
+    }
 
-    const enriched = deliveries.map(d => ({
+    const infoMap = Object.fromEntries((customerinfo || []).map((c) => [c.userid, c]));
+
+    // Step 4: Combine all data
+    const enriched = deliveries.map((d) => ({
       ...d,
       selectedCount: countMap[d.userid] || 0,
       quota: infoMap[d.userid]?.CirculationQuantity || 0,
@@ -46,5 +57,9 @@ export function useUpcomingDeliveries() {
     fetchUpcoming();
   }, []);
 
-  return { upcomingDeliveries, loading, refreshUpcoming: fetchUpcoming };
+  return {
+    upcomingDeliveries,
+    loading,
+    refreshUpcoming: fetchUpcoming,
+  };
 }

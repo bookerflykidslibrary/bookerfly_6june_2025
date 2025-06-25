@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
-import { recommendBooks } from '../utils/recommendBooks';
+import RecommendRestButton from '../components/RecommendRestButton';
 import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
 
 export default function AdminSignUpRequests() {
@@ -10,7 +10,11 @@ export default function AdminSignUpRequests() {
   const [expiringSoon, setExpiringSoon] = useState([]);
   const [expiredMembers, setExpiredMembers] = useState([]);
 
-  const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
+  const {
+    upcomingDeliveries,
+    loading: loadingDeliveries,
+    refreshUpcoming,
+  } = useUpcomingDeliveries();
 
   // Fetch Sign-Up Requests
   const fetchRequests = async () => {
@@ -30,7 +34,7 @@ export default function AdminSignUpRequests() {
     setLoadingRequests(false);
   };
 
-  // Update Request Status
+  // Update Sign-Up Request Status
   const updateStatus = async (id, newStatus) => {
     const { error } = await supabase
       .from('SignUpRequests')
@@ -44,7 +48,7 @@ export default function AdminSignUpRequests() {
     }
   };
 
-  // Fetch Expiring & Expired Memberships
+  // Fetch Expiring and Expired Membership Info
   const fetchMembershipInfo = async () => {
     const today = new Date();
     const nextWeek = new Date();
@@ -104,13 +108,25 @@ export default function AdminSignUpRequests() {
                 <td className="border p-2">{r.child1_name}</td>
                 <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
                 <td className="border p-2">{r.child2_name}</td>
-                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
+                <td className="border p-2">
+                  {r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}
+                </td>
                 <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
                 <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
                 <td className="border p-2 text-center">{r.status}</td>
                 <td className="border p-2 space-x-2">
-                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
-                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
+                  <button
+                    className="bg-green-500 text-white px-2 py-1 rounded"
+                    onClick={() => updateStatus(r.id, 'APPROVED')}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="bg-red-500 text-white px-2 py-1 rounded"
+                    onClick={() => updateStatus(r.id, 'REJECTED')}
+                  >
+                    Reject
+                  </button>
                 </td>
               </tr>
             ))}
@@ -125,7 +141,8 @@ export default function AdminSignUpRequests() {
         ) : (
           expiringSoon.map((m, idx) => (
             <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on{' '}
+              {new Date(m.EndDate).toLocaleDateString()}
             </li>
           ))
         )}
@@ -138,7 +155,8 @@ export default function AdminSignUpRequests() {
         ) : (
           expiredMembers.map((m, idx) => (
             <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on{' '}
+              {new Date(m.EndDate).toLocaleDateString()}
             </li>
           ))
         )}
@@ -154,27 +172,17 @@ export default function AdminSignUpRequests() {
           ) : (
             upcomingDeliveries.map((d, idx) => (
               <li key={idx} className="mb-2">
-                <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — 
-                Delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong> — 
-                📚 {d.selectedCount} of {d.quota} selected
+                <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — Delivery on{' '}
+                <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong> — 📚{' '}
+                {d.selectedCount} of {d.quota} selected
                 {d.selectedCount < d.quota && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        await recommendBooks({
-                          userid: d.userid,
-                          remaining: d.quota - d.selectedCount,
-                          childAge: d.childAge,
-                        });
-                        await refreshUpcoming();
-                      } catch (err) {
-                        alert(err.message);
-                      }
-                    }}
-                    className="ml-4 bg-purple-600 text-white px-2 py-1 rounded text-xs"
-                  >
-                    Recommend Rest
-                  </button>
+                  <RecommendRestButton
+                    userid={d.userid}
+                    selectedCount={d.selectedCount}
+                    quota={d.quota}
+                    childAge={d.childAge}
+                    onDone={refreshUpcoming}
+                  />
                 )}
               </li>
             ))
