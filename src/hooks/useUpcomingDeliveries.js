@@ -8,7 +8,7 @@ export function useUpcomingDeliveries() {
   const fetchUpcoming = async () => {
     setLoading(true);
 
-    // Step 1: Get upcoming delivery users
+    // Step 1: Get deliveries
     const { data: deliveries, error: deliveryError } = await supabase.rpc('get_upcoming_deliveries_7_days');
     if (deliveryError) {
       console.error('Delivery fetch error:', deliveryError.message);
@@ -17,9 +17,9 @@ export function useUpcomingDeliveries() {
       return;
     }
 
-    const userIds = deliveries.map((d) => d.userid);
+    const userIds = deliveries.map((d) => d.userid).filter(Boolean);
 
-    // Step 2: Get book count from new RPC
+    // Step 2: Get count of selected books from RPC
     const { data: selections, error: countError } = await supabase
       .rpc('get_circulationfuture_counts', { user_ids: userIds });
 
@@ -29,7 +29,7 @@ export function useUpcomingDeliveries() {
 
     const countMap = Object.fromEntries((selections || []).map((s) => [s.userid, s.selected_count]));
 
-    // Step 3: Get customer info: quota and age
+    // Step 3: Get quota and child age
     const { data: customerinfo, error: infoError } = await supabase
       .from('customerinfo')
       .select('userid, CirculationQuantity, ChildAge')
@@ -41,7 +41,7 @@ export function useUpcomingDeliveries() {
 
     const infoMap = Object.fromEntries((customerinfo || []).map((c) => [c.userid, c]));
 
-    // Step 4: Combine all data
+    // Step 4: Combine all
     const enriched = deliveries.map((d) => ({
       ...d,
       selectedCount: countMap[d.userid] || 0,
