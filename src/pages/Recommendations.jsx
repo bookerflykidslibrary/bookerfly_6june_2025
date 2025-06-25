@@ -10,7 +10,7 @@ export default function AdminSignUpRequests() {
   const [expiringSoon, setExpiringSoon] = useState([]);
   const [expiredMembers, setExpiredMembers] = useState([]);
 
-  const { upcomingDeliveries, loading: loadingDeliveries } = useUpcomingDeliveries();
+  const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -62,6 +62,30 @@ export default function AdminSignUpRequests() {
 
     setExpiringSoon(soonExpiring || []);
     setExpiredMembers(alreadyExpired || []);
+  };
+
+  const handleRecommendRest = async (delivery) => {
+    try {
+      const remaining = delivery.quota - delivery.selectedCount;
+      if (remaining <= 0) return;
+
+      const { error } = await supabase.rpc('recommend_books_for_user', {
+        user_id: delivery.userid,
+        num_books: remaining,
+        min_age: delivery.childAge,
+        max_age: delivery.childAge,
+      });
+
+      if (error) {
+        alert(`Failed to recommend books: ${error.message}`);
+      } else {
+        alert('Recommended books successfully!');
+        refreshUpcoming();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Unexpected error.');
+    }
   };
 
   useEffect(() => {
@@ -154,6 +178,14 @@ export default function AdminSignUpRequests() {
                 <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
                 Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
                 Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
+                {d.selectedCount < d.quota && (
+                  <button
+                    className="mt-1 ml-2 text-sm bg-blue-500 text-white px-2 py-1 rounded"
+                    onClick={() => handleRecommendRest(d)}
+                  >
+                    📚 Recommend Rest
+                  </button>
+                )}
               </li>
             ))
           )}
