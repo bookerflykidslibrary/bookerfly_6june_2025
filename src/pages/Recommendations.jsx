@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
+import { recommendBooks } from '../utils/recommendBooks';
+import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
 
 export default function AdminSignUpRequests() {
   const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingRequests, setLoadingRequests] = useState(true);
   const [error, setError] = useState(null);
   const [expiringSoon, setExpiringSoon] = useState([]);
   const [expiredMembers, setExpiredMembers] = useState([]);
-  const [upcomingDeliveries, setUpcomingDeliveries] = useState([]);
-  const [futuresMap, setFuturesMap] = useState({});
-  const [quotasMap, setQuotasMap] = useState({});
 
+  const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
+
+  // Fetch Sign-Up Requests
   const fetchRequests = async () => {
-    setLoading(true);
+    setLoadingRequests(true);
     const { data, error } = await supabase
       .from('SignUpRequests')
       .select('*')
@@ -25,9 +27,10 @@ export default function AdminSignUpRequests() {
     } else {
       setRequests(data);
     }
-    setLoading(false);
+    setLoadingRequests(false);
   };
 
+  // Update Request Status
   const updateStatus = async (id, newStatus) => {
     const { error } = await supabase
       .from('SignUpRequests')
@@ -41,6 +44,7 @@ export default function AdminSignUpRequests() {
     }
   };
 
+  // Fetch Expiring & Expired Memberships
   const fetchMembershipInfo = async () => {
     const today = new Date();
     const nextWeek = new Date();
@@ -63,111 +67,120 @@ export default function AdminSignUpRequests() {
     setExpiredMembers(alreadyExpired || []);
   };
 
-  const fetchUpcomingDeliveries = async () => {
-    const { data, error } = await supabase.rpc('get_upcoming_deliveries_7_days');
-    if (error) {
-      console.error('Delivery fetch error:', error.message);
-      return;
-    }
-    setUpcomingDeliveries(data || []);
-
-    const userIds = data.map(d => d.userid);
-    if (userIds.length === 0) return;
-
-    const { data: futures } = await supabase
-      .from('circulationfuture')
-      .select('userid')
-      .in('userid', userIds);
-
-    const futureCounts = futures?.reduce((acc, cur) => {
-      acc[cur.userid] = (acc[cur.userid] || 0) + 1;
-      return acc;
-    }, {}) || {};
-    setFuturesMap(futureCounts);
-
-    const { data: customers } = await supabase
-      .from('customerinfo')
-      .select('CustomerID, CirculationQuantity');
-
-    const quotaMap = customers?.reduce((acc, cur) => {
-      acc[cur.CustomerID] = cur.CirculationQuantity;
-      return acc;
-    }, {}) || {};
-    setQuotasMap(quotaMap);
-  };
-
-  const recommendRest = async (userid, child1_dob, child2_dob) => {
-    const selectedCount = futuresMap[userid] || 0;
-    const quota = quotasMap[userid] || 0;
-    const remaining = quota - selectedCount;
-    if (remaining <= 0) return;
-
-    const today = new Date();
-    const childAges = [];
-    if (child1_dob) {
-      const age1 = Math.floor((today - new Date(child1_dob)) / (365.25 * 24 * 60 * 60 * 1000));
-      childAges.push(age1);
-    }
-    if (child2_dob) {
-      const age2 = Math.floor((today - new Date(child2_dob)) / (365.25 * 24 * 60 * 60 * 1000));
-      childAges.push(age2);
-    }
-
-    const filters = childAges.map(age => `and(MinAge.lte.${age},MaxAge.gte.${age})`).join(',');
-    const { data: books } = await supabase
-      .from('catalog')
-      .select('*')
-      .or(filters)
-      .limit(remaining)
-      .order('random');
-
-    for (const book of books) {
-      await supabase.from('circulationfuture').insert({
-        userid,
-        ISBN13: book.ISBN13,
-        CopyNumber: 0,
-        SerialNumberOfIssue: 0,
-      });
-    }
-    alert(`${remaining} recommended books added!`);
-    fetchUpcomingDeliveries();
-  };
-
   useEffect(() => {
     fetchRequests();
     fetchMembershipInfo();
-    fetchUpcomingDeliveries();
   }, []);
 
-  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
+  if (loadingRequests) return <div className="p-4">Loading sign-up requests...</div>;
   if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
-      {/* sign-up requests table unchanged */}
+      <div className="overflow-x-auto mb-8">
+        <table className="min-w-full border border-gray-300 text-sm">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="border p-2">Name</th>
+              <th className="border p-2">Email</th>
+              <th className="border p-2">Phone</th>
+              <th className="border p-2">Child 1</th>
+              <th className="border p-2">DOB 1</th>
+              <th className="border p-2">Child 2</th>
+              <th className="border p-2">DOB 2</th>
+              <th className="border p-2">Address</th>
+              <th className="border p-2">Message</th>
+              <th className="border p-2">Status</th>
+              <th className="border p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((r) => (
+              <tr key={r.id}>
+                <td className="border p-2">{r.name}</td>
+                <td className="border p-2">{r.email}</td>
+                <td className="border p-2">{r.phone}</td>
+                <td className="border p-2">{r.child1_name}</td>
+                <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
+                <td className="border p-2">{r.child2_name}</td>
+                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
+                <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
+                <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
+                <td className="border p-2 text-center">{r.status}</td>
+                <td className="border p-2 space-x-2">
+                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
+                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
-      <ul className="list-disc list-inside text-sm">
-        {upcomingDeliveries.length === 0 ? (
-          <li>No deliveries scheduled in next 7 days.</li>
+      <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
+      <ul className="list-disc list-inside text-sm mb-6">
+        {expiringSoon.length === 0 ? (
+          <li>No expiring memberships.</li>
         ) : (
-          upcomingDeliveries.map((d, idx) => (
-            <li key={idx} className="mb-2">
-              <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — Next delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong>
-              <div className="ml-6">
-                {futuresMap[d.userid] || 0} of {quotasMap[d.userid] || 0} books selected
-                <button
-                  className="ml-4 px-2 py-1 bg-blue-500 text-white text-xs rounded"
-                  onClick={() => recommendRest(d.userid, d.child1_dob, d.child2_dob)}
-                >
-                  Recommend Rest
-                </button>
-              </div>
+          expiringSoon.map((m, idx) => (
+            <li key={idx}>
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
             </li>
           ))
         )}
       </ul>
+
+      <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
+      <ul className="list-disc list-inside text-sm mb-6">
+        {expiredMembers.length === 0 ? (
+          <li>No expired memberships.</li>
+        ) : (
+          expiredMembers.map((m, idx) => (
+            <li key={idx}>
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
+            </li>
+          ))
+        )}
+      </ul>
+
+      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
+      {loadingDeliveries ? (
+        <div>Loading upcoming deliveries...</div>
+      ) : (
+        <ul className="list-disc list-inside text-sm">
+          {upcomingDeliveries.length === 0 ? (
+            <li>No deliveries scheduled in next 7 days.</li>
+          ) : (
+            upcomingDeliveries.map((d, idx) => (
+              <li key={idx} className="mb-2">
+                <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — 
+                Delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong> — 
+                📚 {d.selectedCount} of {d.quota} selected
+                {d.selectedCount < d.quota && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        await recommendBooks({
+                          userid: d.userid,
+                          remaining: d.quota - d.selectedCount,
+                          childAge: d.childAge,
+                        });
+                        await refreshUpcoming();
+                      } catch (err) {
+                        alert(err.message);
+                      }
+                    }}
+                    className="ml-4 bg-purple-600 text-white px-2 py-1 rounded text-xs"
+                  >
+                    Recommend Rest
+                  </button>
+                )}
+              </li>
+            ))
+          )}
+        </ul>
+      )}
     </div>
   );
 }
