@@ -1,24 +1,18 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
-import RecommendRestButton from '../components/RecommendRestButton';
 import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
 
 export default function AdminSignUpRequests() {
   const [requests, setRequests] = useState([]);
-  const [loadingRequests, setLoadingRequests] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expiringSoon, setExpiringSoon] = useState([]);
   const [expiredMembers, setExpiredMembers] = useState([]);
 
-  const {
-    upcomingDeliveries,
-    loading: loadingDeliveries,
-    refreshUpcoming,
-  } = useUpcomingDeliveries();
+  const { upcomingDeliveries, loading: loadingDeliveries } = useUpcomingDeliveries();
 
-  // Fetch Sign-Up Requests
   const fetchRequests = async () => {
-    setLoadingRequests(true);
+    setLoading(true);
     const { data, error } = await supabase
       .from('SignUpRequests')
       .select('*')
@@ -31,10 +25,9 @@ export default function AdminSignUpRequests() {
     } else {
       setRequests(data);
     }
-    setLoadingRequests(false);
+    setLoading(false);
   };
 
-  // Update Sign-Up Request Status
   const updateStatus = async (id, newStatus) => {
     const { error } = await supabase
       .from('SignUpRequests')
@@ -48,7 +41,6 @@ export default function AdminSignUpRequests() {
     }
   };
 
-  // Fetch Expiring and Expired Membership Info
   const fetchMembershipInfo = async () => {
     const today = new Date();
     const nextWeek = new Date();
@@ -76,7 +68,7 @@ export default function AdminSignUpRequests() {
     fetchMembershipInfo();
   }, []);
 
-  if (loadingRequests) return <div className="p-4">Loading sign-up requests...</div>;
+  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
   if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
 
   return (
@@ -108,25 +100,13 @@ export default function AdminSignUpRequests() {
                 <td className="border p-2">{r.child1_name}</td>
                 <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
                 <td className="border p-2">{r.child2_name}</td>
-                <td className="border p-2">
-                  {r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}
-                </td>
+                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
                 <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
                 <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
                 <td className="border p-2 text-center">{r.status}</td>
                 <td className="border p-2 space-x-2">
-                  <button
-                    className="bg-green-500 text-white px-2 py-1 rounded"
-                    onClick={() => updateStatus(r.id, 'APPROVED')}
-                  >
-                    Approve
-                  </button>
-                  <button
-                    className="bg-red-500 text-white px-2 py-1 rounded"
-                    onClick={() => updateStatus(r.id, 'REJECTED')}
-                  >
-                    Reject
-                  </button>
+                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
+                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
                 </td>
               </tr>
             ))}
@@ -141,8 +121,7 @@ export default function AdminSignUpRequests() {
         ) : (
           expiringSoon.map((m, idx) => (
             <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on{' '}
-              {new Date(m.EndDate).toLocaleDateString()}
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
             </li>
           ))
         )}
@@ -155,8 +134,7 @@ export default function AdminSignUpRequests() {
         ) : (
           expiredMembers.map((m, idx) => (
             <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on{' '}
-              {new Date(m.EndDate).toLocaleDateString()}
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
             </li>
           ))
         )}
@@ -164,26 +142,17 @@ export default function AdminSignUpRequests() {
 
       <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
       {loadingDeliveries ? (
-        <div>Loading upcoming deliveries...</div>
+        <p className="text-sm">Loading upcoming deliveries...</p>
       ) : (
         <ul className="list-disc list-inside text-sm">
           {upcomingDeliveries.length === 0 ? (
             <li>No deliveries scheduled in next 7 days.</li>
           ) : (
             upcomingDeliveries.map((d, idx) => (
-              <li key={idx} className="mb-2">
-                <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo} — Delivery on{' '}
-                <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong> — 📚{' '}
-                {d.selectedCount} of {d.quota} selected
-                {d.selectedCount < d.quota && (
-                  <RecommendRestButton
-                    userid={d.userid}
-                    selectedCount={d.selectedCount}
-                    quota={d.quota}
-                    childAge={d.childAge}
-                    onDone={refreshUpcoming}
-                  />
-                )}
+              <li key={idx}>
+                <strong>{d.CustomerName}</strong> — {d.EmailID} — {d.ContactNo}<br />
+                Plan: {d.SubscriptionPlan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
+                Next delivery on <strong>{new Date(d.NextDeliveryDate).toLocaleDateString()}</strong>
               </li>
             ))
           )}
