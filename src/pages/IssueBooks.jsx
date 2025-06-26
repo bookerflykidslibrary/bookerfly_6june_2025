@@ -70,7 +70,8 @@ export default function IssueBooks() {
 
     if (!error) {
       setSelectedCustomer(customer);
-      setCustomerSearch('');
+      setCustomerSearch(`${customer.CustomerName} (${customer.EmailID})`);
+      //setCustomerSearch('');
       setCustomerSuggestions([]);
 
       const { data: plan } = await supabase
