@@ -125,7 +125,7 @@ export default function Catalog({ user }) {
       let max = maxAge ? parseInt(maxAge) : null;
 
       if (min !== null && max === null) {
-        max = min + 3;
+        max = min;
       } else if (max !== null && min === null) {
         min = Math.max(0, max - 3);
       }
@@ -193,18 +193,12 @@ export default function Catalog({ user }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <input
                 type="number"
-                placeholder="Min Age"
+                placeholder="Enter child's age"
                 className="input"
                 value={filters.minAge}
                 onChange={e => handleFilterChange('minAge', e.target.value)}
             />
-            <input
-                type="number"
-                placeholder="Max Age"
-                className="input"
-                value={filters.maxAge}
-                onChange={e => handleFilterChange('maxAge', e.target.value)}
-            />
+
             <input
                 type="text"
                 placeholder="Author"
@@ -221,9 +215,7 @@ export default function Catalog({ user }) {
             />
           </div>
 
-          <p className="text-xs text-gray-500 mt-1">
-            Tip: If only <strong>Min Age</strong> is filled, we assume +3 years. If only <strong>Max Age</strong> is filled, we assume -3 years.
-          </p>
+
 
           <div className="mt-3 flex gap-2">
             <button
