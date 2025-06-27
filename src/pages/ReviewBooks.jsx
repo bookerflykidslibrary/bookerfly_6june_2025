@@ -81,44 +81,61 @@ export default function ReviewBooks({ adminLocation }) {
       return;
     }
 
-    const imageBlob = await (await fetch(imageSrc)).blob();
-    const filePath = `thumbnails/${bookData.ISBN13}_${Date.now()}.jpg`;
+    // Load image into an <img> tag
+    const img = new Image();
+    img.src = imageSrc;
 
-    const { data, error } = await supabase.storage
-        .from('bookassets')
-        .upload(filePath, imageBlob, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      const width = 300;
+      const height = 400;
+      canvas.width = width;
+      canvas.height = height;
 
-    if (error) {
-      alert(`Upload failed: ${error.message}`);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Convert canvas to JPEG blob (80% quality)
+      canvas.toBlob(async (blob) => {
+        const filePath = `thumbnails/${bookData.ISBN13}_${Date.now()}.jpg`;
+
+        const { data, error } = await supabase.storage
+            .from('bookassets')
+            .upload(filePath, blob, {
+              contentType: 'image/jpeg',
+              upsert: true,
+            });
+
+        if (error) {
+          alert(`Upload failed: ${error.message}`);
       console.error('Supabase upload error:', error);
-      return;
-    }
+          return;
+        }
 
+        const { data: { publicUrl } } = supabase
+            .storage
+            .from('bookassets')
+            .getPublicUrl(filePath);
 
-    const { data: { publicUrl } } = supabase
-        .storage
-        .from('bookassets')
-        .getPublicUrl(filePath);
+        setBookData(prev => ({ ...prev, Thumbnail: publicUrl }));
 
-    setBookData(prev => ({ ...prev, Thumbnail: publicUrl }));
+        const { error: updateError } = await supabase
+            .from('catalog')
+            .update({ Thumbnail: publicUrl })
+            .eq('ISBN13', bookData.ISBN13);
 
-    const { error: updateError } = await supabase
-        .from('catalog')
-        .update({ Thumbnail: publicUrl })
-        .eq('ISBN13', bookData.ISBN13);
+        if (updateError) {
+          alert('Image uploaded but failed to save to catalog.');
+          console.error(updateError);
+        } else {
+          alert('Image resized, uploaded, and catalog updated!');
+        }
 
-    if (updateError) {
-      alert('Image uploaded but failed to save to catalog.');
-      console.error(updateError);
-    } else {
-      alert('Image captured, uploaded, and catalog updated!');
-    }
-
-    setShowCamera(false);
+        setShowCamera(false);
+      }, 'image/jpeg', 0.8); // 80% quality
+    };
   };
+
 
   return (
       <div className="p-6 max-w-3xl mx-auto">
