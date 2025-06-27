@@ -125,7 +125,7 @@ export default function Catalog({ user }) {
       let max = maxAge ? parseInt(maxAge) : null;
 
       if (min !== null && max === null) {
-        max = min + 3;
+        max = min;
       } else if (max !== null && min === null) {
         min = Math.max(0, max - 3);
       }
