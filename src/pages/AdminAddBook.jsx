@@ -1,5 +1,6 @@
 // AdminAddBook.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useRef } from 'react';
+import Webcam from 'react-webcam';
 import { Html5Qrcode } from 'html5-qrcode';
 import supabase from '../utils/supabaseClient';
 
@@ -28,6 +29,10 @@ export default function AdminAddBook() {
   const [message, setMessage] = useState('');
   const [showScanner, setShowScanner] = useState(false);
   const [scanner, setScanner] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const webcamRef = useRef(null);
+
 
   useEffect(() => {
     const fetchTagsAndLocations = async () => {
@@ -115,6 +120,45 @@ export default function AdminAddBook() {
     }
   };
 
+  const captureAndUpload = () => {
+    const imageSrc = webcamRef.current.getScreenshot();
+    if (!imageSrc) return alert('No image captured');
+
+    const img = new Image();
+    img.src = imageSrc;
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 300;
+      canvas.height = 400;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, 300, 400);
+
+      canvas.toBlob(async (blob) => {
+        const filePath = `thumbnails/manual_${Date.now()}.jpg`;
+        const { data, error } = await supabase.storage
+            .from('bookassets')
+            .upload(filePath, blob, {
+              contentType: 'image/jpeg',
+              upsert: true,
+            });
+
+        if (error) {
+          alert(`Upload failed: ${error.message}`);
+        } else {
+          const { data: { publicUrl } } = supabase
+              .storage
+              .from('bookassets')
+              .getPublicUrl(filePath);
+          setThumbnailUrl(publicUrl);
+          alert('Image captured & uploaded');
+        }
+
+        setShowCamera(false);
+      }, 'image/jpeg', 0.8);
+    };
+  };
+
   const handleThumbnailUpload = async () => {
     if (!thumbnailFile) return book.Thumbnail || '';
 
@@ -134,14 +178,15 @@ export default function AdminAddBook() {
 
   const handleAdd = async () => {
     if (!book) return;
-    const thumbnailUrl = await handleThumbnailUpload();
+    const finalThumbnail = thumbnailUrl || await handleThumbnailUpload();
+    //const thumbnailUrl = await handleThumbnailUpload();
     const newBook = {
       ...book,
       Tags: selectedTags.join(','),
       ISBN13: isbn,
       MinAge: book.MinAge || 0,
       MaxAge: book.MaxAge || 18,
-      Thumbnail: thumbnailUrl,
+      Thumbnail: finalThumbnail,
     };
 
     const { error: catalogError } = await supabase.from('catalog').upsert(newBook);
@@ -244,6 +289,7 @@ export default function AdminAddBook() {
             className="w-full p-2 border border-gray-300 rounded resize-y"
           />
 
+
           {thumbnailPreview ? (
             <img src={thumbnailPreview} alt="Thumbnail Preview" className="w-24 h-auto rounded" />
           ) : (
@@ -251,6 +297,38 @@ export default function AdminAddBook() {
               <img src={book.Thumbnail} alt="thumbnail" className="w-24 h-auto rounded" />
             )
           )}
+          <button
+              onClick={() => setShowCamera(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded w-full"
+          >
+            Open Camera
+          </button>
+
+          {showCamera && (
+              <div className="space-y-4 my-2">
+                <Webcam
+                    ref={webcamRef}
+                    screenshotFormat="image/jpeg"
+                    videoConstraints={{ facingMode: 'environment' }}
+                    className="rounded border"
+                />
+                <div className="flex gap-2">
+                  <button
+                      onClick={captureAndUpload}
+                      className="bg-green-600 text-white px-4 py-2 rounded"
+                  >
+                    Capture & Upload
+                  </button>
+                  <button
+                      onClick={() => setShowCamera(false)}
+                      className="bg-red-600 text-white px-4 py-2 rounded"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+          )}
+
 
           <input
             type="file"
