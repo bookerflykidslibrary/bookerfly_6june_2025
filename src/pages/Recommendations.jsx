@@ -1,196 +1,305 @@
-// ✅ AdminSignUpRequests.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
-import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
+import { FaExternalLinkAlt } from 'react-icons/fa';
 
-export default function AdminSignUpRequests() {
-  const [requests, setRequests] = useState([]);
+const PAGE_SIZE = 200;
+
+export default function Catalog({ user }) {
+  const [books, setBooks] = useState([]);
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({ minAge: '', maxAge: '', author: '', title: '' });
+  const [appliedFilters, setAppliedFilters] = useState(null);
+  const [hiddenRead, setHiddenRead] = useState(null);
+  const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [expiringSoon, setExpiringSoon] = useState([]);
-  const [expiredMembers, setExpiredMembers] = useState([]);
+  const [addedRequests, setAddedRequests] = useState({});
 
-  const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
-
-  const fetchRequests = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('SignUpRequests')
-      .select('*')
-      .neq('status', 'APPROVED')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Fetch error:', error.message);
-      setError(error);
+  useEffect(() => {
+    if (user?.email) {
+      fetchReadBooks(user.email);
     } else {
-      setRequests(data);
+      setHiddenRead([]); // ensure catalog still loads for unlogged users
     }
+  }, [user]);
+
+  useEffect(() => {
+    if (hiddenRead !== null) {
+      loadBooks();
+    }
+  }, [page, appliedFilters, hiddenRead]);
+
+  const fetchReadBooks = async (email) => {
+    const { data: customer, error } = await supabase
+        .from('customerinfo')
+        .select('userid')
+        .eq('EmailID', email)
+        .single();
+
+    if (error || !customer) {
+      setHiddenRead([]);
+      return;
+    }
+
+    const { data: readHistory } = await supabase
+        .from('circulationhistory')
+        .select('ISBN13')
+        .eq('userid', customer.userid);
+
+    const readISBNs = (readHistory || [])
+        .map(b => b.ISBN13?.trim().toLowerCase())
+        .filter(Boolean);
+
+    console.log('Books read by user:', readISBNs);
+    setHiddenRead(readISBNs);
+  };
+
+  const applyFilters = () => {
+    setAppliedFilters(filters);
+    setPage(1);
+  };
+
+  const handleBookRequest = async (book) => {
+    if (!user?.email) {
+      alert('Please log in to request a book.');
+      return;
+    }
+
+    const { data: customer, error: customerError } = await supabase
+        .from('customerinfo')
+        .select('userid')
+        .eq('EmailID', user.email)
+        .single();
+
+    if (customerError || !customer) {
+      alert('User not found in customerinfo.');
+      return;
+    }
+
+    const userID = customer.userid;
+
+    const { data: existingRequests, error: serialFetchError } = await supabase
+        .from('circulationfuture')
+        .select('SerialNumberOfIssue')
+        .eq('ISBN13', book.ISBN13)
+        .eq('userid', userID)
+        .order('SerialNumberOfIssue', { ascending: false })
+        .limit(1);
+
+    if (serialFetchError) {
+      alert('Could not check existing requests.');
+      return;
+    }
+
+    const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
+
+    const { error: insertError } = await supabase
+        .from('circulationfuture')
+        .insert({
+          ISBN13: book.ISBN13,
+          CopyNumber: null,
+          SerialNumberOfIssue: nextSerial,
+          userid: userID
+        });
+
+    if (insertError) {
+      alert('Failed to add request.');
+      return;
+    }
+
+    setAddedRequests(prev => ({ ...prev, [book.ISBN13]: true }));
+  };
+
+  const loadBooks = async () => {
+    setLoading(true);
+
+    let query = supabase
+        .from('catalog')
+        .select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description')
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+
+    if (appliedFilters) {
+      const { minAge, maxAge, author, title } = appliedFilters;
+
+      let min = minAge ? parseInt(minAge) : null;
+      let max = maxAge ? parseInt(maxAge) : null;
+
+      if (min !== null && max === null) {
+        max = min + 3;
+      } else if (max !== null && min === null) {
+        min = Math.max(0, max - 3);
+      }
+
+      if (min !== null) query = query.gte('MaxAge', min);
+      if (max !== null) query = query.lte('MinAge', max);
+
+      if (author) query = query.ilike('Authors', `%${author}%`);
+      if (title) query = query.ilike('Title', `%${title}%`);
+    }
+
+    const { data: catalogBooks, error: catalogError } = await query;
+    if (catalogError) {
+      setLoading(false);
+      return;
+    }
+
+    const isbnList = catalogBooks.map(book => book.ISBN13);
+    const { data: copyinfo } = await supabase
+        .from('copyinfo')
+        .select('ISBN13, CopyBooked, AskPrice')
+        .in('ISBN13', isbnList);
+
+    const availabilityMap = {};
+    const priceMap = {};
+    for (const copy of copyinfo) {
+      if (!availabilityMap[copy.ISBN13]) availabilityMap[copy.ISBN13] = false;
+      if (!copy.CopyBooked) availabilityMap[copy.ISBN13] = true;
+      if (copy.AskPrice !== null && (!priceMap[copy.ISBN13] || copy.AskPrice < priceMap[copy.ISBN13])) {
+        priceMap[copy.ISBN13] = copy.AskPrice;
+      }
+    }
+
+    const readSet = new Set((hiddenRead || []).map(id => id?.trim().toLowerCase()));
+    const filteredBooks = catalogBooks.filter(book => {
+      const isbn = book.ISBN13?.trim().toLowerCase();
+      return isbn && availabilityMap[book.ISBN13] && !readSet.has(isbn);
+    });
+
+    const droppedBooks = catalogBooks.filter(book => {
+      const isbn = book.ISBN13?.trim().toLowerCase();
+      return !isbn || !availabilityMap[book.ISBN13] || readSet.has(isbn);
+    });
+
+    console.log('Catalog before filter:', catalogBooks.length);
+    console.log('Books with available copies:', catalogBooks.filter(book => availabilityMap[book.ISBN13]).length);
+    console.log('Filtered catalog after hiding read:', filteredBooks.length);
+    console.log('Dropped books (filtered out):', droppedBooks.map(b => b.ISBN13));
+
+    filteredBooks.forEach(book => book.minPrice = priceMap[book.ISBN13] ?? null);
+
+    const randomized = filteredBooks.sort(() => 0.5 - Math.random());
+    setBooks(randomized.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
     setLoading(false);
   };
 
-  const updateStatus = async (id, newStatus) => {
-    const { error } = await supabase
-      .from('SignUpRequests')
-      .update({ status: newStatus })
-      .eq('id', id);
-
-    if (error) {
-      alert(`Status update failed: ${error.message}`);
-    } else {
-      fetchRequests();
-    }
-  };
-
-  const fetchMembershipInfo = async () => {
-    const today = new Date();
-    const nextWeek = new Date();
-    nextWeek.setDate(today.getDate() + 7);
-
-    const { data: soonExpiring } = await supabase
-      .from('customerinfo')
-      .select('CustomerName, EmailID, ContactNo, EndDate')
-      .gte('EndDate', today.toISOString())
-      .lte('EndDate', nextWeek.toISOString())
-      .order('EndDate');
-
-    const { data: alreadyExpired } = await supabase
-      .from('customerinfo')
-      .select('CustomerName, EmailID, ContactNo, EndDate')
-      .lt('EndDate', today.toISOString())
-      .order('EndDate');
-
-    setExpiringSoon(soonExpiring || []);
-    setExpiredMembers(alreadyExpired || []);
-  };
-
-  const handleRecommendRest = async (delivery) => {
-    try {
-      const remaining = delivery.quota - delivery.selectedCount;
-      if (remaining <= 0) return;
-
-      const { error } = await supabase.rpc('recommend_books_for_user', {
-        user_id: delivery.userid,
-        num_books: remaining,
-        min_age: delivery.childAge,
-        max_age: delivery.childAge,
-      });
-
-      if (error) {
-        alert(`Failed to recommend books: ${error.message}`);
-      } else {
-        alert('Recommended books successfully!');
-        refreshUpcoming();
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Unexpected error.');
-    }
-  };
-
-  useEffect(() => {
-    fetchRequests();
-    fetchMembershipInfo();
-  }, []);
-
-  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
-  if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
+  const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
+  const toggleDescription = (id) => setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
-      <div className="overflow-x-auto mb-8">
-        <table className="min-w-full border border-gray-300 text-sm">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="border p-2">Name</th>
-              <th className="border p-2">Email</th>
-              <th className="border p-2">Phone</th>
-              <th className="border p-2">Child 1</th>
-              <th className="border p-2">DOB 1</th>
-              <th className="border p-2">Child 2</th>
-              <th className="border p-2">DOB 2</th>
-              <th className="border p-2">Address</th>
-              <th className="border p-2">Message</th>
-              <th className="border p-2">Status</th>
-              <th className="border p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {requests.map((r) => (
-              <tr key={r.id}>
-                <td className="border p-2">{r.name}</td>
-                <td className="border p-2">{r.email}</td>
-                <td className="border p-2">{r.phone}</td>
-                <td className="border p-2">{r.child1_name}</td>
-                <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
-                <td className="border p-2">{r.child2_name}</td>
-                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
-                <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
-                <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
-                <td className="border p-2 text-center">{r.status}</td>
-                <td className="border p-2 space-x-2">
-                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
-                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="p-4 max-w-7xl mx-auto bg-gradient-to-br from-blue-50 to-pink-50 min-h-screen">
+        <h1 className="text-3xl font-bold mb-4 text-center text-purple-700">Bookerfly Kids Library - Book Catalog</h1>
+
+        <div className="bg-white p-4 rounded-xl shadow-md mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <input
+                type="number"
+                placeholder="Min Age"
+                className="input"
+                value={filters.minAge}
+                onChange={e => handleFilterChange('minAge', e.target.value)}
+            />
+
+            <input
+                type="text"
+                placeholder="Author"
+                className="input"
+                value={filters.author}
+                onChange={e => handleFilterChange('author', e.target.value)}
+            />
+            <input
+                type="text"
+                placeholder="Title"
+                className="input"
+                value={filters.title}
+                onChange={e => handleFilterChange('title', e.target.value)}
+            />
+          </div>
+
+          <p className="text-xs text-gray-500 mt-1">
+            Tip: If only <strong>Min Age</strong> is filled, we assume +3 years. If only <strong>Max Age</strong> is filled, we assume -3 years.
+          </p>
+
+          <div className="mt-3 flex gap-2">
+            <button
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-800"
+                onClick={applyFilters}
+            >
+              Apply Filters
+            </button>
+            <button
+                className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400"
+                onClick={() => {
+                  setFilters({ minAge: '', maxAge: '', author: '', title: '' });
+                  setAppliedFilters(null);
+                  setPage(1);
+                }}
+            >
+              Clear Filters
+            </button>
+          </div>
+        </div>
+
+        {hiddenRead?.length > 0 && (
+            <p className="text-sm text-red-600 font-medium mb-4">
+              Hidden books already read previously by you.
+            </p>
+        )}
+
+        {loading ? (
+            <p>Loading...</p>
+        ) : books.length === 0 ? (
+            <div className="flex flex-col items-center mt-12 animate-fade-in">
+              <div className="text-6xl mb-4">📚❓</div>
+              <h2 className="text-xl font-semibold text-gray-700">No books found</h2>
+              <p className="text-sm text-gray-500 mt-1 text-center max-w-md">
+                Try adjusting your filters, or check back later — we're always adding more stories to our shelves!
+              </p>
+            </div>
+        ) : (
+            <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {books.map(book => (
+                  <div key={book.BookID} className="bg-white rounded-xl p-4 shadow-md flex flex-col">
+                    <img src={book.Thumbnail} alt={book.Title} className="h-40 object-contain mb-2 mx-auto" />
+                    <h2 className="text-lg font-bold text-purple-800">{book.Title}</h2>
+                    <p className="text-sm text-gray-600 italic">{book.Authors}</p>
+                    <p className="text-xs text-gray-800 mt-1">
+                      {book.Description?.length > 120 ? (
+                          expandedDesc[book.BookID] ? book.Description : `${book.Description?.substring(0, 120)}... `
+                      ) : book.Description}
+                      {book.Description?.length > 120 && (
+                          <span onClick={() => toggleDescription(book.BookID)} className="text-blue-500 cursor-pointer underline">more</span>
+                      )}
+                    </p>
+                    <p className="text-sm text-gray-700 mt-1">Age Group: {book.MinAge} - {book.MaxAge}</p>
+                    <button
+                        onClick={() => handleBookRequest(book)}
+                        className="text-white bg-blue-500 px-3 py-1 mt-2 rounded hover:bg-blue-700 text-xs w-fit"
+                    >
+                      {addedRequests[book.ISBN13] ? 'Added to your future requests :-)' : 'Request for Me'}
+                    </button>
+                    <div className="mt-2 text-xs text-gray-700">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        {book.minPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</span>}
+                        <a
+                            href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=123432543556`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-orange-600 hover:underline"
+                        >
+                          Buy on Amazon <FaExternalLinkAlt />
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+              ))}
+            </div>
+        )}
+
+        <div className="mt-6 flex justify-between items-center">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} className="btn">Previous</button>
+          <span className="text-sm">Page {page}</span>
+          <button onClick={() => setPage(p => p + 1)} className="btn">Next</button>
+        </div>
       </div>
-
-      <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {expiringSoon.length === 0 ? (
-          <li>No expiring memberships.</li>
-        ) : (
-          expiringSoon.map((m, idx) => (
-            <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
-            </li>
-          ))
-        )}
-      </ul>
-
-      <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {expiredMembers.length === 0 ? (
-          <li>No expired memberships.</li>
-        ) : (
-          expiredMembers.map((m, idx) => (
-            <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
-            </li>
-          ))
-        )}
-      </ul>
-
-      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
-      {loadingDeliveries ? (
-        <p className="text-sm">Loading upcoming deliveries...</p>
-      ) : (
-        <ul className="list-disc list-inside text-sm">
-          {upcomingDeliveries.length === 0 ? (
-            <li>No deliveries scheduled in next 7 days.</li>
-          ) : (
-            upcomingDeliveries.map((d, idx) => (
-              <li key={idx}>
-                <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
-                Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
-                Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
-                {d.selectedCount < d.quota && (
-                  <button
-                    className="mt-1 ml-2 text-sm bg-blue-500 text-white px-2 py-1 rounded"
-                    onClick={() => handleRecommendRest(d)}
-                  >
-                    📚 Recommend Rest
-                  </button>
-                )}
-              </li>
-            ))
-          )}
-        </ul>
-      )}
-    </div>
   );
 }
