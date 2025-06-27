@@ -193,7 +193,7 @@ export default function Catalog({ user }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <input
                 type="number"
-                placeholder="Min Age"
+                placeholder="Enter child's age"
                 className="input"
                 value={filters.minAge}
                 onChange={e => handleFilterChange('minAge', e.target.value)}
@@ -215,9 +215,7 @@ export default function Catalog({ user }) {
             />
           </div>
 
-          <p className="text-xs text-gray-500 mt-1">
-            Tip: If only <strong>Min Age</strong> is filled, we assume +3 years. If only <strong>Max Age</strong> is filled, we assume -3 years.
-          </p>
+
 
           <div className="mt-3 flex gap-2">
             <button
