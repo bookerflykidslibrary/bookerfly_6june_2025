@@ -20,26 +20,27 @@ export default function PublicSignup() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    console.log('Submitting:', { ...form, status: 'PENDING' });
-    const { error } = await supabase.from('SignUpRequests').insert([{ ...form, status: 'PENDING' }]);
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    if (error) {
-      alert('Failed to submit request');
-      console.error(error);
-    } else {
-      setSubmitted(true);
-    }
+  // Convert empty date fields to null
+  const cleanedForm = {
+    ...form,
+    child2_dob: form.child2_dob === '' ? null : form.child2_dob,
+    status: 'PENDING',
   };
 
-  if (submitted) {
-    return (
-        <div className="p-6 text-green-700 text-lg">
-          Thank you! Your signup request has been submitted. We will contact you for further action. Thanks for your patience.
-        </div>
-    );
+  console.log('Submitting:', cleanedForm);
+
+  const { error } = await supabase.from('SignUpRequests').insert([cleanedForm]);
+
+  if (error) {
+    alert('Failed to submit request');
+    console.error(error);
+  } else {
+    setSubmitted(true);
   }
+};
 
   return (
       <div className="max-w-xl mx-auto p-6">
