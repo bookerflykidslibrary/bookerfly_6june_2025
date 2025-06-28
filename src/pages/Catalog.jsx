@@ -279,7 +279,7 @@ export default function Catalog({ user }) {
                       <div className="flex flex-col sm:flex-row gap-2">
                         {book.minPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</span>}
                         <a
-                            href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=123432543556`}
+                            href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=vandana1230b9-21`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-orange-600 hover:underline"
