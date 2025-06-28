@@ -7,7 +7,7 @@ export default function PublicSignup() {
     email: '',
     phone: '',
     child1_name: '',
-    child1_dob: '2020-09-01', // Default value
+    child1_dob: '2020-09-01', // Default
     child2_name: '',
     child2_dob: '',
     address: '',
@@ -18,11 +18,20 @@ export default function PublicSignup() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
     setForm((prev) => {
       const updated = { ...prev, [name]: value };
+
+      // Auto-fill child2_dob if child2_name is typed but dob not provided
+      if (name === 'child2_name' && value.trim() !== '' && !prev.child2_dob) {
+        updated.child2_dob = prev.child1_dob;
+      }
+
+      // Clear child2_dob if child2_name is cleared
       if (name === 'child2_name' && value.trim() === '') {
         updated.child2_dob = '';
       }
+
       return updated;
     });
   };
@@ -37,7 +46,7 @@ export default function PublicSignup() {
         form.child2_name.trim() === ''
           ? null
           : form.child2_dob === ''
-          ? '2020-09-01'
+          ? form.child1_dob // default to child1 DOB if missing
           : form.child2_dob,
       status: 'PENDING',
     };
@@ -108,7 +117,6 @@ export default function PublicSignup() {
           name="child1_dob"
           value={form.child1_dob}
           onChange={handleChange}
-          placeholder="Child 1 DOB"
           className="w-full border p-2 rounded"
           required
         />
@@ -128,7 +136,6 @@ export default function PublicSignup() {
             name="child2_dob"
             value={form.child2_dob}
             onChange={handleChange}
-            placeholder="Child 2 DOB (optional)"
             className="w-full border p-2 rounded"
           />
         )}
