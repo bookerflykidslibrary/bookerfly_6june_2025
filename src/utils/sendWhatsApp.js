@@ -1,24 +1,21 @@
-export async function sendWhatsAppMessage(phoneNumber, message) {
+export async function sendWhatsappMessage(phone, message) {
   try {
-    const response = await fetch('https://api.gupshup.io/sm/api/v1/msg', {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL}/send-whatsapp-message`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'apikey': 'cj9wh7yetgl1knwmtmqxusznrj9y4rih',
+        'Content-Type': 'application/json',
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       },
-      body: new URLSearchParams({
-        channel: 'whatsapp',
-        source: '15557383134',
-        destination: phoneNumber,
-        message: message,
-        'src.name': 'Bookerfly',
-      }),
+      body: JSON.stringify({ phone, message }),
     });
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message || 'Failed to send message');
-    return result;
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to send message');
+    }
+
+    return data;
   } catch (err) {
-    console.error('WhatsApp send error:', err.message);
+    console.error('WhatsApp send failed:', err.message);
   }
 }
