@@ -263,7 +263,7 @@ export default function Catalog({ user }) {
                     <p className="text-xs text-gray-800 mt-1">
                       {book.Description?.length > 120 ? (
                           expandedDesc[book.BookID] ? book.Description : `${book.Description?.substring(0, 120)}... `
-                      ) : book.Description}
+                      ) : book.Descriptipon}
                       {book.Description?.length > 120 && (
                           <span onClick={() => toggleDescription(book.BookID)} className="text-blue-500 cursor-pointer underline">more</span>
                       )}
