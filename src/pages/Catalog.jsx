@@ -257,7 +257,7 @@ export default function Catalog({ user }) {
             <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {books.map(book => (
                   <div key={book.BookID} className="bg-white rounded-xl p-4 shadow-md flex flex-col">
-                    <img src={book.Thumbnail} alt={book.Title} className="h-40 object-contain mb-2 mx-auto" />
+                    <img src={book.Thumbnail} alt={book.Title} className="h-60 object-contain mb-2 mx-auto" />
                     <h2 className="text-lg font-bold text-purple-800">{book.Title}</h2>
                     <p className="text-sm text-gray-600 italic">{book.Authors}</p>
                     <p className="text-xs text-gray-800 mt-1">
