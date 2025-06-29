@@ -2,78 +2,38 @@ import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { FaExternalLinkAlt } from 'react-icons/fa';
 
-const PAGE_SIZE = 200;
-
 export default function Catalog({ user }) {
   const [books, setBooks] = useState([]);
-  const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ minAge: '', maxAge: '', author: '', title: '' });
   const [appliedFilters, setAppliedFilters] = useState(null);
-  const [hiddenRead, setHiddenRead] = useState(null);
   const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
   const [addedRequests, setAddedRequests] = useState({});
 
-  useEffect(() => {
-    if (user?.email) {
-      fetchReadBooks(user.email);
-    } else {
-      setHiddenRead([]); // ensure catalog still loads for unlogged users
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (hiddenRead !== null) {
-      loadBooks();
-    }
-  }, [page, appliedFilters, hiddenRead]);
-
-  const normalizeISBN = (isbn) => isbn?.replace(/[^0-9xX]/g, '').toLowerCase();
-
-  const fetchReadBooks = async (email) => {
-    console.log('👀 fetchReadBooks triggered for email:', email);
-
-    const { data: customer, error: customerError } = await supabase
+  const getUserIdFromEmail = async (email) => {
+    if (!email) return null;
+    const { data, error } = await supabase
         .from('customerinfo')
         .select('userid')
         .eq('EmailID', email)
         .single();
-
-    if (customerError || !customer) {
-      console.warn('❌ Customer lookup failed:', customerError, customer);
-      setHiddenRead([]);
-      return;
-    }
-
-    console.log('✅ Customer ID:', customer.userid);
-
-    const { data: readHistory, error: historyError } = await supabase
-        .from('circulationhistory')
-        .select('ISBN13, ReturnDate')
-        .eq('userid', customer.userid)
-    // Optional: only count books that have been returned
-    // .neq('ReturnDate', null);
-
-    if (historyError) {
-      console.error('❌ Read history fetch failed:', historyError);
-      setHiddenRead([]);
-      return;
-    }
-
-    console.log('📚 Raw read history:', readHistory);
-
-    const readISBNs = (readHistory || [])
-        .map(b => normalizeISBN(b.ISBN13))
-        .filter(Boolean);
-
-    console.log('✅ Normalized read ISBNs:', readISBNs);
-
-    setHiddenRead(readISBNs);
+    return error ? null : data?.userid;
   };
+
+  useEffect(() => {
+    loadBooks();
+  }, [appliedFilters]);
 
   const applyFilters = () => {
     setAppliedFilters(filters);
-    setPage(1);
+  };
+
+  const handleFilterChange = (field, value) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
+  };
+
+  const toggleDescription = (id) => {
+    setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const handleBookRequest = async (book) => {
@@ -95,18 +55,13 @@ export default function Catalog({ user }) {
 
     const userID = customer.userid;
 
-    const { data: existingRequests, error: serialFetchError } = await supabase
+    const { data: existingRequests } = await supabase
         .from('circulationfuture')
         .select('SerialNumberOfIssue')
         .eq('ISBN13', book.ISBN13)
         .eq('userid', userID)
         .order('SerialNumberOfIssue', { ascending: false })
         .limit(1);
-
-    if (serialFetchError) {
-      alert('Could not check existing requests.');
-      return;
-    }
 
     const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
 
@@ -130,79 +85,34 @@ export default function Catalog({ user }) {
   const loadBooks = async () => {
     setLoading(true);
 
-    let query = supabase
-        .from('catalog')
-        .select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description')
-        .order('random')  // 🔥 Add this line
-        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+    const userId = user?.email ? await getUserIdFromEmail(user.email) : null;
 
+    const age = parseInt(appliedFilters?.minAge);
+    const minAge = isNaN(age) ? null : age;
+    const maxAge = minAge !== null ? minAge + 2 : null;
 
-    if (appliedFilters) {
-      const { minAge, maxAge, author, title } = appliedFilters;
-
-      let min = minAge ? parseInt(minAge) : null;
-      let max = maxAge ? parseInt(maxAge) : null;
-
-      if (min !== null && max === null) {
-        max = min;
-      } else if (max !== null && min === null) {
-        min = Math.max(0, max - 3);
-      }
-
-      if (min !== null) query = query.gte('MaxAge', min);
-      if (max !== null) query = query.lte('MinAge', max);
-
-      if (author) query = query.ilike('Authors', `%${author}%`);
-      if (title) query = query.ilike('Title', `%${title}%`);
-    }
-
-    const { data: catalogBooks, error: catalogError } = await query;
-    if (catalogError) {
-      setLoading(false);
-      return;
-    }
-
-    const isbnList = catalogBooks.map(book => book.ISBN13);
-    const { data: copyinfo } = await supabase
-        .from('copyinfo')
-        .select('ISBN13, CopyBooked, AskPrice')
-        .in('ISBN13', isbnList);
-
-    const availabilityMap = {};
-    const priceMap = {};
-    for (const copy of copyinfo) {
-      if (!availabilityMap[copy.ISBN13]) availabilityMap[copy.ISBN13] = false;
-      if (!copy.CopyBooked) availabilityMap[copy.ISBN13] = true;
-      if (copy.AskPrice !== null && (!priceMap[copy.ISBN13] || copy.AskPrice < priceMap[copy.ISBN13])) {
-        priceMap[copy.ISBN13] = copy.AskPrice;
-      }
-    }
-
-    const readSet = new Set((hiddenRead || []).map(id => id?.trim().toLowerCase()));
-    const filteredBooks = catalogBooks.filter(book => {
-      const isbn = book.ISBN13?.trim().toLowerCase();
-      return isbn && availabilityMap[book.ISBN13] && !readSet.has(isbn);
+    const response = await fetch('/functions/v1/get-random-catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userid: userId,
+        minAge,
+        maxAge,
+        limit: 200
+      })
     });
 
-    const droppedBooks = catalogBooks.filter(book => {
-      const isbn = book.ISBN13?.trim().toLowerCase();
-      return !isbn || !availabilityMap[book.ISBN13] || readSet.has(isbn);
-    });
+    const result = await response.json();
 
-    console.log('Catalog before filter:', catalogBooks.length);
-    console.log('Books with available copies:', catalogBooks.filter(book => availabilityMap[book.ISBN13]).length);
-    console.log('Filtered catalog after hiding read:', filteredBooks.length);
-    console.log('Dropped books (filtered out):', droppedBooks.map(b => b.ISBN13));
+    if (!response.ok) {
+      console.error('Failed to fetch catalog:', result.error);
+      setBooks([]);
+    } else {
+      setBooks(result);
+    }
 
-    filteredBooks.forEach(book => book.minPrice = priceMap[book.ISBN13] ?? null);
-
-    const randomized = filteredBooks.sort(() => 0.5 - Math.random());
-    setBooks(randomized.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
     setLoading(false);
   };
-
-  const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
-  const toggleDescription = (id) => setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
 
   return (
       <div className="p-4 max-w-7xl mx-auto bg-gradient-to-br from-blue-50 to-pink-50 min-h-screen">
@@ -217,7 +127,6 @@ export default function Catalog({ user }) {
                 value={filters.minAge}
                 onChange={e => handleFilterChange('minAge', e.target.value)}
             />
-
             <input
                 type="text"
                 placeholder="Author"
@@ -234,8 +143,6 @@ export default function Catalog({ user }) {
             />
           </div>
 
-
-
           <div className="mt-3 flex gap-2">
             <button
                 className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-800"
@@ -248,19 +155,12 @@ export default function Catalog({ user }) {
                 onClick={() => {
                   setFilters({ minAge: '', maxAge: '', author: '', title: '' });
                   setAppliedFilters(null);
-                  setPage(1);
                 }}
             >
               Clear Filters
             </button>
           </div>
         </div>
-
-        {hiddenRead?.length > 0 && (
-            <p className="text-sm text-red-600 font-medium mb-4">
-              Hidden books already read previously by you.
-            </p>
-        )}
 
         {loading ? (
             <p>Loading...</p>
@@ -296,7 +196,7 @@ export default function Catalog({ user }) {
                     </button>
                     <div className="mt-2 text-xs text-gray-700">
                       <div className="flex flex-col sm:flex-row gap-2">
-                        {book.minPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</span>}
+                        {book.MinPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.MinPrice}</span>}
                         <a
                             href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=vandana1230b9-21`}
                             target="_blank"
@@ -311,12 +211,6 @@ export default function Catalog({ user }) {
               ))}
             </div>
         )}
-
-        <div className="mt-6 flex justify-between items-center">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} className="btn">Previous</button>
-          <span className="text-sm">Page {page}</span>
-          <button onClick={() => setPage(p => p + 1)} className="btn">Next</button>
-        </div>
       </div>
   );
 }
