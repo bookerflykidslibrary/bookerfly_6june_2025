@@ -1,216 +1,214 @@
+// Catalog.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { FaExternalLinkAlt } from 'react-icons/fa';
 
+const PAGE_SIZE = 2000;
+
 export default function Catalog({ user }) {
   const [books, setBooks] = useState([]);
+  const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ minAge: '', maxAge: '', author: '', title: '' });
   const [appliedFilters, setAppliedFilters] = useState(null);
+  const [hiddenRead, setHiddenRead] = useState(null);
   const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
   const [addedRequests, setAddedRequests] = useState({});
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [tagOptions, setTagOptions] = useState([]);
+  const [editingBookId, setEditingBookId] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
-  const getUserIdFromEmail = async (email) => {
-    if (!email) return null;
-    const { data, error } = await supabase
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (user?.email) {
+        await fetchReadBooks(user.email);
+        await checkAdminAndTags();
+      } else {
+        setHiddenRead([]);
+      }
+    };
+    loadUserData();
+  }, [user]);
+
+  const checkAdminAndTags = async () => {
+    const { data: authUser } = await supabase.auth.getUser();
+    const userId = authUser?.user?.id;
+    if (userId) {
+      const { data: adminData } = await supabase
+          .from('admininfo')
+          .select('*')
+          .eq('AdminID', userId)
+          .single();
+
+      if (adminData) setIsAdmin(true);
+    }
+
+    const { data: tagList, error } = await supabase
+        .from('tags')
+        .select('TagName');
+
+    if (!error && tagList) {
+      const uniqueTags = [...new Set(tagList.map(tag => tag.TagName))];
+      setTagOptions(uniqueTags);
+    }
+  };
+
+  const fetchReadBooks = async (email) => {
+    const { data: customer } = await supabase
         .from('customerinfo')
         .select('userid')
         .eq('EmailID', email)
         .single();
-    return error ? null : data?.userid;
-  };
+    if (!customer) return setHiddenRead([]);
 
-  useEffect(() => {
-    loadBooks();
-  }, [appliedFilters]);
+    const { data: readHistory } = await supabase
+        .from('circulationhistory')
+        .select('ISBN13')
+        .eq('userid', customer.userid);
+
+    const readISBNs = (readHistory || [])
+        .map(b => b.ISBN13?.trim().toLowerCase())
+        .filter(Boolean);
+    setHiddenRead(readISBNs);
+  };
 
   const applyFilters = () => {
     setAppliedFilters(filters);
-  };
-
-  const handleFilterChange = (field, value) => {
-    setFilters(prev => ({ ...prev, [field]: value }));
-  };
-
-  const toggleDescription = (id) => {
-    setExpandedDesc(prev => ({ ...prev, [id]: !prev[id] }));
+    setPage(1);
   };
 
   const handleBookRequest = async (book) => {
-    if (!user?.email) {
-      alert('Please log in to request a book.');
-      return;
-    }
+    if (!user?.email) return alert('Please log in to request a book.');
 
-    const { data: customer, error: customerError } = await supabase
+    const { data: customer } = await supabase
         .from('customerinfo')
         .select('userid')
         .eq('EmailID', user.email)
         .single();
 
-    if (customerError || !customer) {
-      alert('User not found in customerinfo.');
-      return;
-    }
+    if (!customer) return alert('User not found.');
 
-    const userID = customer.userid;
-
-    const { data: existingRequests } = await supabase
+    const { data: existing } = await supabase
         .from('circulationfuture')
         .select('SerialNumberOfIssue')
         .eq('ISBN13', book.ISBN13)
-        .eq('userid', userID)
+        .eq('userid', customer.userid)
         .order('SerialNumberOfIssue', { ascending: false })
         .limit(1);
 
-    const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
+    const nextSerial = (existing?.[0]?.SerialNumberOfIssue ?? 0) + 1;
 
-    const { error: insertError } = await supabase
+    const { error } = await supabase
         .from('circulationfuture')
-        .insert({
-          ISBN13: book.ISBN13,
-          CopyNumber: null,
-          SerialNumberOfIssue: nextSerial,
-          userid: userID
-        });
+        .insert({ ISBN13: book.ISBN13, CopyNumber: null, SerialNumberOfIssue: nextSerial, userid: customer.userid });
 
-    if (insertError) {
-      alert('Failed to add request.');
-      return;
-    }
-
+    if (error) return alert('Failed to add request.');
     setAddedRequests(prev => ({ ...prev, [book.ISBN13]: true }));
   };
 
   const loadBooks = async () => {
     setLoading(true);
+    let query = supabase.from('catalog').select('*').range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
-    const userId = user?.email ? await getUserIdFromEmail(user.email) : null;
-
-    const age = parseInt(appliedFilters?.minAge);
-    const minAge = isNaN(age) ? null : age;
-    const maxAge = minAge !== null ? minAge + 2 : null;
-
-    const response = await fetch('/functions/v1/get-random-catalog', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userid: userId,
-        minAge,
-        maxAge,
-        limit: 200
-      })
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      console.error('Failed to fetch catalog:', result.error);
-      setBooks([]);
-    } else {
-      setBooks(result);
+    if (appliedFilters) {
+      const { minAge, maxAge, author, title } = appliedFilters;
+      let min = minAge ? parseInt(minAge) : null;
+      let max = maxAge ? parseInt(maxAge) : null;
+      if (min !== null && max === null) max = min;
+      else if (max !== null && min === null) min = Math.max(0, max - 3);
+      if (min !== null) query = query.gte('MaxAge', min);
+      if (max !== null) query = query.lte('MinAge', max);
+      if (author) query = query.ilike('Authors', `%${author}%`);
+      if (title) query = query.ilike('Title', `%${title}%`);
     }
 
+    const { data: booksData } = await query;
+    if (!booksData) return;
+
+    const { data: copies } = await supabase
+        .from('copyinfo')
+        .select('ISBN13, CopyBooked')
+        .in('ISBN13', booksData.map(b => b.ISBN13));
+
+    const availabilityMap = {};
+    for (const copy of copies || []) {
+      if (!availabilityMap[copy.ISBN13]) availabilityMap[copy.ISBN13] = false;
+      if (!copy.CopyBooked) availabilityMap[copy.ISBN13] = true;
+    }
+
+    const readSet = new Set((hiddenRead || []).map(id => id?.trim().toLowerCase()));
+    const filteredBooks = booksData.filter(book => availabilityMap[book.ISBN13] && !readSet.has(book.ISBN13?.toLowerCase()));
+    const randomized = filteredBooks.sort(() => 0.5 - Math.random());
+
+    setBooks(randomized);
     setLoading(false);
   };
 
+  const startEditing = (book) => {
+    setEditingBookId(book.BookID);
+    setEditForm({ ...book, Tags: book.Tags?.split(',') || [] });
+  };
+
+  const saveEdit = async () => {
+    const updated = { ...editForm, Tags: editForm.Tags.join(',') };
+    const { error } = await supabase
+        .from('catalog')
+        .update(updated)
+        .eq('BookID', editingBookId);
+    if (!error) {
+      setEditingBookId(null);
+      loadBooks();
+    }
+  };
+
+  const toggleTag = (tag) => {
+    setEditForm(prev => {
+      const exists = prev.Tags.includes(tag);
+      return {
+        ...prev,
+        Tags: exists ? prev.Tags.filter(t => t !== tag) : [...prev.Tags, tag]
+      };
+    });
+  };
+
+  const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
+
   return (
-      <div className="p-4 max-w-7xl mx-auto bg-gradient-to-br from-blue-50 to-pink-50 min-h-screen">
-        <h1 className="text-3xl font-bold mb-4 text-center text-purple-700">Bookerfly Kids Library - Book Catalog</h1>
-
-        <div className="bg-white p-4 rounded-xl shadow-md mb-6">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <input
-                type="number"
-                placeholder="Enter child's age"
-                className="input"
-                value={filters.minAge}
-                onChange={e => handleFilterChange('minAge', e.target.value)}
-            />
-            <input
-                type="text"
-                placeholder="Author"
-                className="input"
-                value={filters.author}
-                onChange={e => handleFilterChange('author', e.target.value)}
-            />
-            <input
-                type="text"
-                placeholder="Title"
-                className="input"
-                value={filters.title}
-                onChange={e => handleFilterChange('title', e.target.value)}
-            />
-          </div>
-
-          <div className="mt-3 flex gap-2">
-            <button
-                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-800"
-                onClick={applyFilters}
-            >
-              Apply Filters
-            </button>
-            <button
-                className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-400"
-                onClick={() => {
-                  setFilters({ minAge: '', maxAge: '', author: '', title: '' });
-                  setAppliedFilters(null);
-                }}
-            >
-              Clear Filters
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-            <p>Loading...</p>
-        ) : books.length === 0 ? (
-            <div className="flex flex-col items-center mt-12 animate-fade-in">
-              <div className="text-6xl mb-4">📚❓</div>
-              <h2 className="text-xl font-semibold text-gray-700">No books found</h2>
-              <p className="text-sm text-gray-500 mt-1 text-center max-w-md">
-                Try adjusting your filters, or check back later — we're always adding more stories to our shelves!
-              </p>
-            </div>
-        ) : (
-            <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {books.map(book => (
-                  <div key={book.BookID} className="bg-white rounded-xl p-4 shadow-md flex flex-col">
-                    <img src={book.Thumbnail} alt={book.Title} className="h-40 object-contain mb-2 mx-auto" />
-                    <h2 className="text-lg font-bold text-purple-800">{book.Title}</h2>
-                    <p className="text-sm text-gray-600 italic">{book.Authors}</p>
-                    <p className="text-xs text-gray-800 mt-1">
-                      {book.Description?.length > 120 ? (
-                          expandedDesc[book.BookID] ? book.Description : `${book.Description?.substring(0, 120)}... `
-                      ) : book.Description}
-                      {book.Description?.length > 120 && (
-                          <span onClick={() => toggleDescription(book.BookID)} className="text-blue-500 cursor-pointer underline">more</span>
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-700 mt-1">Age Group: {book.MinAge} - {book.MaxAge}</p>
-                    <button
-                        onClick={() => handleBookRequest(book)}
-                        className="text-white bg-blue-500 px-3 py-1 mt-2 rounded hover:bg-blue-700 text-xs w-fit"
-                    >
-                      {addedRequests[book.ISBN13] ? 'Added to your future requests :-)' : 'Request for Me'}
-                    </button>
-                    <div className="mt-2 text-xs text-gray-700">
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        {book.MinPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.MinPrice}</span>}
-                        <a
-                            href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=vandana1230b9-21`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-orange-600 hover:underline"
-                        >
-                          Buy on Amazon <FaExternalLinkAlt />
-                        </a>
-                      </div>
+      <div className="p-4">
+        {loading ? 'Loading...' : books.map(book => (
+            <div key={book.BookID} className="bg-white rounded p-4 shadow mb-4">
+              {editingBookId === book.BookID ? (
+                  <div>
+                    <input value={editForm.Title} onChange={e => setEditForm({ ...editForm, Title: e.target.value })} />
+                    <textarea value={editForm.Description} onChange={e => setEditForm({ ...editForm, Description: e.target.value })} />
+                    <input value={editForm.Authors} onChange={e => setEditForm({ ...editForm, Authors: e.target.value })} />
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {tagOptions.map(tag => (
+                          <label key={tag} className="text-sm">
+                            <input
+                                type="checkbox"
+                                checked={editForm.Tags.includes(tag)}
+                                onChange={() => toggleTag(tag)}
+                            /> {tag}
+                          </label>
+                      ))}
                     </div>
+                    <button onClick={saveEdit} className="btn bg-green-600 text-white mt-2">Save</button>
                   </div>
-              ))}
+              ) : (
+                  <div>
+                    <img src={book.Thumbnail} alt="thumb" className="w-32 h-48 object-cover mb-2 rounded" />
+                    <h2 className="font-bold text-lg">{book.Title}</h2>
+                    <p className="text-sm text-gray-600 italic">{book.Authors}</p>
+                    <p className="text-xs">{book.Description}</p>
+                    {isAdmin && (
+                        <button onClick={() => startEditing(book)} className="btn bg-yellow-500 text-white mt-2">Edit</button>
+                    )}
+                  </div>
+              )}
             </div>
-        )}
+        ))}
       </div>
   );
 }
