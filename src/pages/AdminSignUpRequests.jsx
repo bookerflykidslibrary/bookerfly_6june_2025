@@ -9,16 +9,17 @@ export default function AdminSignUpRequests() {
   const [error, setError] = useState(null);
   const [expiringSoon, setExpiringSoon] = useState([]);
   const [expiredMembers, setExpiredMembers] = useState([]);
+  const [missedDeliveries, setMissedDeliveries] = useState([]);
 
   const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
 
   const fetchRequests = async () => {
     setLoading(true);
     const { data, error } = await supabase
-      .from('SignUpRequests')
-      .select('*')
-      .neq('status', 'APPROVED')
-      .order('created_at', { ascending: false });
+        .from('SignUpRequests')
+        .select('*')
+        .neq('status', 'APPROVED')
+        .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Fetch error:', error.message);
@@ -29,11 +30,20 @@ export default function AdminSignUpRequests() {
     setLoading(false);
   };
 
+  const fetchMissedDeliveries = async () => {
+    const { data, error } = await supabase.rpc('get_missed_deliveries_30_days');
+    if (error) {
+      console.error('Failed to fetch missed deliveries:', error.message);
+    } else {
+      setMissedDeliveries(data || []);
+    }
+  };
+
   const updateStatus = async (id, newStatus) => {
     const { error } = await supabase
-      .from('SignUpRequests')
-      .update({ status: newStatus })
-      .eq('id', id);
+        .from('SignUpRequests')
+        .update({ status: newStatus })
+        .eq('id', id);
 
     if (error) {
       alert(`Status update failed: ${error.message}`);
@@ -48,17 +58,17 @@ export default function AdminSignUpRequests() {
     nextWeek.setDate(today.getDate() + 7);
 
     const { data: soonExpiring } = await supabase
-      .from('customerinfo')
-      .select('CustomerName, EmailID, ContactNo, EndDate')
-      .gte('EndDate', today.toISOString())
-      .lte('EndDate', nextWeek.toISOString())
-      .order('EndDate');
+        .from('customerinfo')
+        .select('CustomerName, EmailID, ContactNo, EndDate')
+        .gte('EndDate', today.toISOString())
+        .lte('EndDate', nextWeek.toISOString())
+        .order('EndDate');
 
     const { data: alreadyExpired } = await supabase
-      .from('customerinfo')
-      .select('CustomerName, EmailID, ContactNo, EndDate')
-      .lt('EndDate', today.toISOString())
-      .order('EndDate');
+        .from('customerinfo')
+        .select('CustomerName, EmailID, ContactNo, EndDate')
+        .lt('EndDate', today.toISOString())
+        .order('EndDate');
 
     setExpiringSoon(soonExpiring || []);
     setExpiredMembers(alreadyExpired || []);
@@ -91,17 +101,18 @@ export default function AdminSignUpRequests() {
   useEffect(() => {
     fetchRequests();
     fetchMembershipInfo();
+    fetchMissedDeliveries();
   }, []);
 
   if (loading) return <div className="p-4">Loading sign-up requests...</div>;
   if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
-      <div className="overflow-x-auto mb-8">
-        <table className="min-w-full border border-gray-300 text-sm">
-          <thead className="bg-gray-100">
+      <div className="p-6 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
+        <div className="overflow-x-auto mb-8">
+          <table className="min-w-full border border-gray-300 text-sm">
+            <thead className="bg-gray-100">
             <tr>
               <th className="border p-2">Name</th>
               <th className="border p-2">Email</th>
@@ -115,82 +126,97 @@ export default function AdminSignUpRequests() {
               <th className="border p-2">Status</th>
               <th className="border p-2">Actions</th>
             </tr>
-          </thead>
-          <tbody>
+            </thead>
+            <tbody>
             {requests.map((r) => (
-              <tr key={r.id}>
-                <td className="border p-2">{r.name}</td>
-                <td className="border p-2">{r.email}</td>
-                <td className="border p-2">{r.phone}</td>
-                <td className="border p-2">{r.child1_name}</td>
-                <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
-                <td className="border p-2">{r.child2_name}</td>
-                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
-                <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
-                <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
-                <td className="border p-2 text-center">{r.status}</td>
-                <td className="border p-2 space-x-2">
-                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
-                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
-                </td>
-              </tr>
+                <tr key={r.id}>
+                  <td className="border p-2">{r.name}</td>
+                  <td className="border p-2">{r.email}</td>
+                  <td className="border p-2">{r.phone}</td>
+                  <td className="border p-2">{r.child1_name}</td>
+                  <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
+                  <td className="border p-2">{r.child2_name}</td>
+                  <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
+                  <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
+                  <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
+                  <td className="border p-2 text-center">{r.status}</td>
+                  <td className="border p-2 space-x-2">
+                    <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
+                    <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
+                  </td>
+                </tr>
             ))}
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
 
-      <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {expiringSoon.length === 0 ? (
-          <li>No expiring memberships.</li>
-        ) : (
-          expiringSoon.map((m, idx) => (
-            <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
-            </li>
-          ))
-        )}
-      </ul>
-
-      <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {expiredMembers.length === 0 ? (
-          <li>No expired memberships.</li>
-        ) : (
-          expiredMembers.map((m, idx) => (
-            <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
-            </li>
-          ))
-        )}
-      </ul>
-
-      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
-      {loadingDeliveries ? (
-        <p className="text-sm">Loading upcoming deliveries...</p>
-      ) : (
-        <ul className="list-disc list-inside text-sm">
-          {upcomingDeliveries.length === 0 ? (
-            <li>No deliveries scheduled in next 7 days.</li>
+        <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
+        <ul className="list-disc list-inside text-sm mb-6">
+          {expiringSoon.length === 0 ? (
+              <li>No expiring memberships.</li>
           ) : (
-            upcomingDeliveries.map((d, idx) => (
-              <li key={idx}>
-                <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
-                Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
-                Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
-                {d.selectedCount < d.quota && (
-                  <button
-                    className="mt-1 ml-2 text-sm bg-blue-500 text-white px-2 py-1 rounded"
-                    onClick={() => handleRecommendRest(d)}
-                  >
-                    📚 Recommend Rest
-                  </button>
-                )}
-              </li>
-            ))
+              expiringSoon.map((m, idx) => (
+                  <li key={idx}>
+                    <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
+                  </li>
+              ))
           )}
         </ul>
-      )}
-    </div>
+
+        <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
+        <ul className="list-disc list-inside text-sm mb-6">
+          {expiredMembers.length === 0 ? (
+              <li>No expired memberships.</li>
+          ) : (
+              expiredMembers.map((m, idx) => (
+                  <li key={idx}>
+                    <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
+                  </li>
+              ))
+          )}
+        </ul>
+
+        <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
+        {loadingDeliveries ? (
+            <p className="text-sm">Loading upcoming deliveries...</p>
+        ) : (
+            <ul className="list-disc list-inside text-sm">
+              {upcomingDeliveries.length === 0 ? (
+                  <li>No deliveries scheduled in next 7 days.</li>
+              ) : (
+                  upcomingDeliveries.map((d, idx) => (
+                      <li key={idx}>
+                        <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
+                        Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
+                        Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
+                        {d.selectedCount < d.quota && (
+                            <button
+                                className="mt-1 ml-2 text-sm bg-blue-500 text-white px-2 py-1 rounded"
+                                onClick={() => handleRecommendRest(d)}
+                            >
+                              📚 Recommend Rest
+                            </button>
+                        )}
+                      </li>
+                  ))
+              )}
+            </ul>
+        )}
+
+        <h2 className="text-xl font-bold mb-2 text-red-600">⚠️ Missed Deliveries in Last 30 Days</h2>
+        <ul className="list-disc list-inside text-sm mb-6">
+          {missedDeliveries.length === 0 ? (
+              <li>No missed deliveries found in the last 30 days.</li>
+          ) : (
+              missedDeliveries.map((m, idx) => (
+                  <li key={idx} className="mb-2">
+                    <strong>{m.customername}</strong> — {m.emailid} — {m.contactno}<br />
+                    Plan: {m.plan}, Quota: {m.quota}<br />
+                    Expected delivery on <strong>{new Date(m.next_expected_date).toLocaleDateString()}</strong>
+                  </li>
+              ))
+          )}
+        </ul>
+      </div>
   );
 }
