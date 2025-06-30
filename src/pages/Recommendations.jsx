@@ -1,214 +1,227 @@
-// Catalog.jsx
+// ✅ AdminSignUpRequests.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
-import { FaExternalLinkAlt } from 'react-icons/fa';
+import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
 
-const PAGE_SIZE = 2000;
-
-export default function Catalog({ user }) {
-  const [books, setBooks] = useState([]);
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ minAge: '', maxAge: '', author: '', title: '' });
-  const [appliedFilters, setAppliedFilters] = useState(null);
-  const [hiddenRead, setHiddenRead] = useState(null);
-  const [expandedDesc, setExpandedDesc] = useState({});
+export default function AdminSignUpRequests() {
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [addedRequests, setAddedRequests] = useState({});
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [tagOptions, setTagOptions] = useState([]);
-  const [editingBookId, setEditingBookId] = useState(null);
-  const [editForm, setEditForm] = useState({});
+  const [error, setError] = useState(null);
+  const [expiringSoon, setExpiringSoon] = useState([]);
+  const [expiredMembers, setExpiredMembers] = useState([]);
+  const {
+    upcomingDeliveries,
+    unfulfilledDeliveries,
+    loading: loadingDeliveries,
+    refreshUpcoming
+  } = useUpcomingDeliveries();
 
-  useEffect(() => {
-    const loadUserData = async () => {
-      if (user?.email) {
-        await fetchReadBooks(user.email);
-        await checkAdminAndTags();
-      } else {
-        setHiddenRead([]);
-      }
-    };
-    loadUserData();
-  }, [user]);
-
-  const checkAdminAndTags = async () => {
-    const { data: authUser } = await supabase.auth.getUser();
-    const userId = authUser?.user?.id;
-    if (userId) {
-      const { data: adminData } = await supabase
-          .from('admininfo')
-          .select('*')
-          .eq('AdminID', userId)
-          .single();
-
-      if (adminData) setIsAdmin(true);
-    }
-
-    const { data: tagList, error } = await supabase
-        .from('tags')
-        .select('TagName');
-
-    if (!error && tagList) {
-      const uniqueTags = [...new Set(tagList.map(tag => tag.TagName))];
-      setTagOptions(uniqueTags);
-    }
-  };
-
-  const fetchReadBooks = async (email) => {
-    const { data: customer } = await supabase
-        .from('customerinfo')
-        .select('userid')
-        .eq('EmailID', email)
-        .single();
-    if (!customer) return setHiddenRead([]);
-
-    const { data: readHistory } = await supabase
-        .from('circulationhistory')
-        .select('ISBN13')
-        .eq('userid', customer.userid);
-
-    const readISBNs = (readHistory || [])
-        .map(b => b.ISBN13?.trim().toLowerCase())
-        .filter(Boolean);
-    setHiddenRead(readISBNs);
-  };
-
-  const applyFilters = () => {
-    setAppliedFilters(filters);
-    setPage(1);
-  };
-
-  const handleBookRequest = async (book) => {
-    if (!user?.email) return alert('Please log in to request a book.');
-
-    const { data: customer } = await supabase
-        .from('customerinfo')
-        .select('userid')
-        .eq('EmailID', user.email)
-        .single();
-
-    if (!customer) return alert('User not found.');
-
-    const { data: existing } = await supabase
-        .from('circulationfuture')
-        .select('SerialNumberOfIssue')
-        .eq('ISBN13', book.ISBN13)
-        .eq('userid', customer.userid)
-        .order('SerialNumberOfIssue', { ascending: false })
-        .limit(1);
-
-    const nextSerial = (existing?.[0]?.SerialNumberOfIssue ?? 0) + 1;
-
-    const { error } = await supabase
-        .from('circulationfuture')
-        .insert({ ISBN13: book.ISBN13, CopyNumber: null, SerialNumberOfIssue: nextSerial, userid: customer.userid });
-
-    if (error) return alert('Failed to add request.');
-    setAddedRequests(prev => ({ ...prev, [book.ISBN13]: true }));
-  };
-
-  const loadBooks = async () => {
+  const fetchRequests = async () => {
     setLoading(true);
-    let query = supabase.from('catalog').select('*').range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+    const { data, error } = await supabase
+        .from('SignUpRequests')
+        .select('*')
+        .neq('status', 'APPROVED')
+        .order('created_at', { ascending: false });
 
-    if (appliedFilters) {
-      const { minAge, maxAge, author, title } = appliedFilters;
-      let min = minAge ? parseInt(minAge) : null;
-      let max = maxAge ? parseInt(maxAge) : null;
-      if (min !== null && max === null) max = min;
-      else if (max !== null && min === null) min = Math.max(0, max - 3);
-      if (min !== null) query = query.gte('MaxAge', min);
-      if (max !== null) query = query.lte('MinAge', max);
-      if (author) query = query.ilike('Authors', `%${author}%`);
-      if (title) query = query.ilike('Title', `%${title}%`);
+    if (error) {
+      console.error('Fetch error:', error.message);
+      setError(error);
+    } else {
+      setRequests(data);
     }
-
-    const { data: booksData } = await query;
-    if (!booksData) return;
-
-    const { data: copies } = await supabase
-        .from('copyinfo')
-        .select('ISBN13, CopyBooked')
-        .in('ISBN13', booksData.map(b => b.ISBN13));
-
-    const availabilityMap = {};
-    for (const copy of copies || []) {
-      if (!availabilityMap[copy.ISBN13]) availabilityMap[copy.ISBN13] = false;
-      if (!copy.CopyBooked) availabilityMap[copy.ISBN13] = true;
-    }
-
-    const readSet = new Set((hiddenRead || []).map(id => id?.trim().toLowerCase()));
-    const filteredBooks = booksData.filter(book => availabilityMap[book.ISBN13] && !readSet.has(book.ISBN13?.toLowerCase()));
-    const randomized = filteredBooks.sort(() => 0.5 - Math.random());
-
-    setBooks(randomized);
     setLoading(false);
   };
 
-  const startEditing = (book) => {
-    setEditingBookId(book.BookID);
-    setEditForm({ ...book, Tags: book.Tags?.split(',') || [] });
-  };
-
-  const saveEdit = async () => {
-    const updated = { ...editForm, Tags: editForm.Tags.join(',') };
+  const updateStatus = async (id, newStatus) => {
     const { error } = await supabase
-        .from('catalog')
-        .update(updated)
-        .eq('BookID', editingBookId);
-    if (!error) {
-      setEditingBookId(null);
-      loadBooks();
+        .from('SignUpRequests')
+        .update({ status: newStatus })
+        .eq('id', id);
+
+    if (error) {
+      alert(`Status update failed: ${error.message}`);
+    } else {
+      fetchRequests();
     }
   };
 
-  const toggleTag = (tag) => {
-    setEditForm(prev => {
-      const exists = prev.Tags.includes(tag);
-      return {
-        ...prev,
-        Tags: exists ? prev.Tags.filter(t => t !== tag) : [...prev.Tags, tag]
-      };
-    });
+  const fetchMembershipInfo = async () => {
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+
+    const { data: soonExpiring } = await supabase
+        .from('customerinfo')
+        .select('CustomerName, EmailID, ContactNo, EndDate')
+        .gte('EndDate', today.toISOString())
+        .lte('EndDate', nextWeek.toISOString())
+        .order('EndDate');
+
+    const { data: alreadyExpired } = await supabase
+        .from('customerinfo')
+        .select('CustomerName, EmailID, ContactNo, EndDate')
+        .lt('EndDate', today.toISOString())
+        .order('EndDate');
+
+    setExpiringSoon(soonExpiring || []);
+    setExpiredMembers(alreadyExpired || []);
   };
 
-  const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
+  const handleRecommendRest = async (delivery) => {
+    try {
+      const remaining = delivery.quota - delivery.selectedCount;
+      if (remaining <= 0) return;
+
+      const { error } = await supabase.rpc('recommend_books_for_user', {
+        user_id: delivery.userid,
+        num_books: remaining,
+        min_age: delivery.childAge,
+        max_age: delivery.childAge,
+      });
+
+      if (error) {
+        alert(`Failed to recommend books: ${error.message}`);
+      } else {
+        alert('Recommended books successfully!');
+        refreshUpcoming();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Unexpected error.');
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests();
+    fetchMembershipInfo();
+  }, []);
+
+  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
+  if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
 
   return (
-      <div className="p-4">
-        {loading ? 'Loading...' : books.map(book => (
-            <div key={book.BookID} className="bg-white rounded p-4 shadow mb-4">
-              {editingBookId === book.BookID ? (
-                  <div>
-                    <input value={editForm.Title} onChange={e => setEditForm({ ...editForm, Title: e.target.value })} />
-                    <textarea value={editForm.Description} onChange={e => setEditForm({ ...editForm, Description: e.target.value })} />
-                    <input value={editForm.Authors} onChange={e => setEditForm({ ...editForm, Authors: e.target.value })} />
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {tagOptions.map(tag => (
-                          <label key={tag} className="text-sm">
-                            <input
-                                type="checkbox"
-                                checked={editForm.Tags.includes(tag)}
-                                onChange={() => toggleTag(tag)}
-                            /> {tag}
-                          </label>
-                      ))}
-                    </div>
-                    <button onClick={saveEdit} className="btn bg-green-600 text-white mt-2">Save</button>
-                  </div>
+      <div className="p-6 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
+        <div className="overflow-x-auto mb-8">
+          <table className="min-w-full border border-gray-300 text-sm">
+            <thead className="bg-gray-100">
+            <tr>
+              <th className="border p-2">Name</th>
+              <th className="border p-2">Email</th>
+              <th className="border p-2">Phone</th>
+              <th className="border p-2">Child 1</th>
+              <th className="border p-2">DOB 1</th>
+              <th className="border p-2">Child 2</th>
+              <th className="border p-2">DOB 2</th>
+              <th className="border p-2">Address</th>
+              <th className="border p-2">Message</th>
+              <th className="border p-2">Status</th>
+              <th className="border p-2">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            {requests.map((r) => (
+                <tr key={r.id}>
+                  <td className="border p-2">{r.name}</td>
+                  <td className="border p-2">{r.email}</td>
+                  <td className="border p-2">{r.phone}</td>
+                  <td className="border p-2">{r.child1_name}</td>
+                  <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
+                  <td className="border p-2">{r.child2_name}</td>
+                  <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
+                  <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
+                  <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
+                  <td className="border p-2 text-center">{r.status}</td>
+                  <td className="border p-2 space-x-2">
+                    <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
+                    <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
+                  </td>
+                </tr>
+            ))}
+            </tbody>
+          </table>
+        </div>
+
+        <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
+        <ul className="list-disc list-inside text-sm mb-6">
+          {expiringSoon.length === 0 ? (
+              <li>No expiring memberships.</li>
+          ) : (
+              expiringSoon.map((m, idx) => (
+                  <li key={idx}>
+                    <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
+                  </li>
+              ))
+          )}
+        </ul>
+
+        <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
+        <ul className="list-disc list-inside text-sm mb-6">
+          {expiredMembers.length === 0 ? (
+              <li>No expired memberships.</li>
+          ) : (
+              expiredMembers.map((m, idx) => (
+                  <li key={idx}>
+                    <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
+                  </li>
+              ))
+          )}
+        </ul>
+
+        <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
+        {loadingDeliveries ? (
+            <p className="text-sm">Loading upcoming deliveries...</p>
+        ) : (
+            <ul className="list-disc list-inside text-sm">
+              {upcomingDeliveries.length === 0 ? (
+                  <li>No deliveries scheduled in next 7 days.</li>
               ) : (
-                  <div>
-                    <img src={book.Thumbnail} alt="thumb" className="w-32 h-48 object-cover mb-2 rounded" />
-                    <h2 className="font-bold text-lg">{book.Title}</h2>
-                    <p className="text-sm text-gray-600 italic">{book.Authors}</p>
-                    <p className="text-xs">{book.Description}</p>
-                    {isAdmin && (
-                        <button onClick={() => startEditing(book)} className="btn bg-yellow-500 text-white mt-2">Edit</button>
-                    )}
-                  </div>
+                  upcomingDeliveries.map((d, idx) => (
+                      <li key={idx}>
+                        <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
+                        Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
+                        Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
+                        {d.selectedCount < d.quota && (
+                            <button
+                                className="mt-1 ml-2 text-sm bg-blue-500 text-white px-2 py-1 rounded"
+                                onClick={() => handleRecommendRest(d)}
+                            >
+                              📚 Recommend Rest
+                            </button>
+                        )}
+                      </li>
+                  ))
               )}
-            </div>
-        ))}
+            </ul>
+        )}
+
+        <h2 className="text-xl font-bold mb-2 text-yellow-600">📦 Unfulfilled Deliveries in Last 30 Days</h2>
+        {loadingDeliveries ? (
+            <p className="text-sm">Loading unfulfilled deliveries...</p>
+        ) : (
+            <ul className="list-disc list-inside text-sm">
+              {unfulfilledDeliveries.length === 0 ? (
+                  <li>No unfulfilled deliveries found in last 30 days.</li>
+              ) : (
+                  unfulfilledDeliveries.map((d, idx) => (
+                      <li key={idx}>
+                        <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
+                        Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
+                        Missed delivery expected on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
+                        {d.selectedCount < d.quota && (
+                            <button
+                                className="mt-1 ml-2 text-sm bg-orange-500 text-white px-2 py-1 rounded"
+                                onClick={() => handleRecommendRest(d)}
+                            >
+                              🔄 Recommend
+                            </button>
+                        )}
+                      </li>
+                  ))
+              )}
+            </ul>
+        )}
       </div>
   );
 }
