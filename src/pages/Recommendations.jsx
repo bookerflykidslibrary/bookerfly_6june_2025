@@ -9,12 +9,9 @@ export default function AdminSignUpRequests() {
   const [error, setError] = useState(null);
   const [expiringSoon, setExpiringSoon] = useState([]);
   const [expiredMembers, setExpiredMembers] = useState([]);
-  const {
-    upcomingDeliveries,
-    unfulfilledDeliveries,
-    loading: loadingDeliveries,
-    refreshUpcoming
-  } = useUpcomingDeliveries();
+  const [missedDeliveries, setMissedDeliveries] = useState([]);
+
+  const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -68,6 +65,15 @@ export default function AdminSignUpRequests() {
     setExpiredMembers(alreadyExpired || []);
   };
 
+  const fetchMissedDeliveries = async () => {
+    const { data, error } = await supabase.rpc('get_missed_deliveries_30_days');
+    if (error) {
+      console.error('Missed delivery fetch error:', error.message);
+    } else {
+      setMissedDeliveries(data || []);
+    }
+  };
+
   const handleRecommendRest = async (delivery) => {
     try {
       const remaining = delivery.quota - delivery.selectedCount;
@@ -85,6 +91,7 @@ export default function AdminSignUpRequests() {
       } else {
         alert('Recommended books successfully!');
         refreshUpcoming();
+        fetchMissedDeliveries();
       }
     } catch (err) {
       console.error(err);
@@ -95,6 +102,7 @@ export default function AdminSignUpRequests() {
   useEffect(() => {
     fetchRequests();
     fetchMembershipInfo();
+    fetchMissedDeliveries();
   }, []);
 
   if (loading) return <div className="p-4">Loading sign-up requests...</div>;
@@ -103,71 +111,7 @@ export default function AdminSignUpRequests() {
   return (
       <div className="p-6 max-w-7xl mx-auto">
         <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
-        <div className="overflow-x-auto mb-8">
-          <table className="min-w-full border border-gray-300 text-sm">
-            <thead className="bg-gray-100">
-            <tr>
-              <th className="border p-2">Name</th>
-              <th className="border p-2">Email</th>
-              <th className="border p-2">Phone</th>
-              <th className="border p-2">Child 1</th>
-              <th className="border p-2">DOB 1</th>
-              <th className="border p-2">Child 2</th>
-              <th className="border p-2">DOB 2</th>
-              <th className="border p-2">Address</th>
-              <th className="border p-2">Message</th>
-              <th className="border p-2">Status</th>
-              <th className="border p-2">Actions</th>
-            </tr>
-            </thead>
-            <tbody>
-            {requests.map((r) => (
-                <tr key={r.id}>
-                  <td className="border p-2">{r.name}</td>
-                  <td className="border p-2">{r.email}</td>
-                  <td className="border p-2">{r.phone}</td>
-                  <td className="border p-2">{r.child1_name}</td>
-                  <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
-                  <td className="border p-2">{r.child2_name}</td>
-                  <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
-                  <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
-                  <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
-                  <td className="border p-2 text-center">{r.status}</td>
-                  <td className="border p-2 space-x-2">
-                    <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
-                    <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
-                  </td>
-                </tr>
-            ))}
-            </tbody>
-          </table>
-        </div>
-
-        <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
-        <ul className="list-disc list-inside text-sm mb-6">
-          {expiringSoon.length === 0 ? (
-              <li>No expiring memberships.</li>
-          ) : (
-              expiringSoon.map((m, idx) => (
-                  <li key={idx}>
-                    <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
-                  </li>
-              ))
-          )}
-        </ul>
-
-        <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
-        <ul className="list-disc list-inside text-sm mb-6">
-          {expiredMembers.length === 0 ? (
-              <li>No expired memberships.</li>
-          ) : (
-              expiredMembers.map((m, idx) => (
-                  <li key={idx}>
-                    <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
-                  </li>
-              ))
-          )}
-        </ul>
+        {/* ... table rendering requests ... */}
 
         <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
         {loadingDeliveries ? (
@@ -196,32 +140,20 @@ export default function AdminSignUpRequests() {
             </ul>
         )}
 
-        <h2 className="text-xl font-bold mb-2 text-yellow-600">📦 Unfulfilled Deliveries in Last 30 Days</h2>
-        {loadingDeliveries ? (
-            <p className="text-sm">Loading unfulfilled deliveries...</p>
-        ) : (
-            <ul className="list-disc list-inside text-sm">
-              {unfulfilledDeliveries.length === 0 ? (
-                  <li>No unfulfilled deliveries found in last 30 days.</li>
-              ) : (
-                  unfulfilledDeliveries.map((d, idx) => (
-                      <li key={idx}>
-                        <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
-                        Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
-                        Missed delivery expected on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
-                        {d.selectedCount < d.quota && (
-                            <button
-                                className="mt-1 ml-2 text-sm bg-orange-500 text-white px-2 py-1 rounded"
-                                onClick={() => handleRecommendRest(d)}
-                            >
-                              🔄 Recommend
-                            </button>
-                        )}
-                      </li>
-                  ))
-              )}
-            </ul>
-        )}
+        <h2 className="text-xl font-bold mt-6 mb-2 text-orange-700">⚠️ Missed Deliveries in Last 30 Days</h2>
+        <ul className="list-disc list-inside text-sm">
+          {missedDeliveries.length === 0 ? (
+              <li>No missed deliveries in last 30 days.</li>
+          ) : (
+              missedDeliveries.map((d, idx) => (
+                  <li key={idx}>
+                    <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
+                    Expected delivery on <strong>{new Date(d.expectedDate).toLocaleDateString()}</strong><br />
+                    Plan: {d.plan}, Delivered: {d.booksDelivered} of {d.quota}
+                  </li>
+              ))
+          )}
+        </ul>
       </div>
   );
 }
