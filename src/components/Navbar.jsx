@@ -19,6 +19,7 @@ export default function Navbar({ user }) {
         { to: '/recommendations', label: 'Test Page' },
         { to: '/admin/view-signup-requests', label: 'Next steps' },
         { to: '/admin/return-books', label: 'Return Books' },
+        { to: '/admin/circulation-summary', label: 'Circulation Summary' },
     ];
 
     return (

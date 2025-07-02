@@ -17,7 +17,7 @@ import PublicSignup from './pages/PublicSignUp';
 import AdminSignUpRequests from './pages/AdminSignUpRequests';
 import ReturnBooks from './pages/ReturnBooks'; // ✅ adjust path if needed
 import ChangePassword from './pages/ChangePassword';
-
+import CirculationSummary from './pages/CirculationSummary';
 
 
 <Routes>
@@ -77,6 +77,7 @@ function AppRoutes() {
         <Route path="/admin/add-book" element={<AdminAddBook user={user} />} />
         <Route path="/admin/issue-books" element={<IssueBooks user={user} />} />
         <Route path="/admin/signup" element={<SignupForm />} />
+        <Route path="/admin/circulation-summary" element={<CirculationSummary />} />
         <Route path="/admin/edit-customer" element={<AdminCustomerEditor user={user} />} />
         <Route path="/signup-request" element={<PublicSignup />} />
         <Route path="/change-password" element={<ChangePassword />} />
