@@ -3,7 +3,8 @@ import supabase from '../utils/supabaseClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { useSession } from '../hooks/useSession';
+import { useUser } from '@supabase/auth-helpers-react';
+
 
 export default function AdminEditBook() {
     const session = useSession();
