@@ -12,6 +12,7 @@ export default function Navbar({ user }) {
 
     const adminLinks = [
         { to: '/admin/add-book', label: 'Add a Book' },
+        { to: '/admin/edit-book', label: 'Edit Book' },
         { to: '/admin/issue-books', label: 'Issue Books' },
         { to: '/admin/signup', label: 'Sign Up' },
         { to: '/admin/edit-customer', label: 'View Customer' },
