@@ -1,4 +1,4 @@
-// /src/pages/admin/EditBook.jsx
+//  /src/pages/admin/EditBook.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../../utils/supabaseClient';
 import { useNavigate } from 'react-router-dom';
