@@ -18,6 +18,7 @@ import AdminSignUpRequests from './pages/AdminSignUpRequests';
 import ReturnBooks from './pages/ReturnBooks'; // ✅ adjust path if needed
 import ChangePassword from './pages/ChangePassword';
 import CirculationSummary from './pages/CirculationSummary';
+import EditBook from './pages/admin/EditBook';
 
 
 <Routes>
