@@ -1,10 +1,12 @@
+import logo from '../../assets/logo.jpg'; // adjust path based on your file location
+
 export default function HomePage() {
     return (
         <div className="min-h-screen bg-[#FFFBEF] text-gray-800">
             {/* Hero Section */}
             <div className="text-center py-12 px-4 sm:px-8">
                 <img
-                    src="../../assets/logo.jpg"
+                    src={logo}
                     alt="Bookerfly Logo"
                     className="mx-auto w-32 h-32 rounded-full shadow-md mb-4"
                 />
