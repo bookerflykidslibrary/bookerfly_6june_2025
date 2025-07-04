@@ -1,4 +1,4 @@
-import logo from '../../assets/logo.jpg'; // adjust path based on your file location
+import logo from '../assets/logo.jpg'; // adjust path based on your file location
 
 export default function HomePage() {
     return (
