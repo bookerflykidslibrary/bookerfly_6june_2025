@@ -1,6 +1,6 @@
-// src/pages/admin/EditBook.jsx
+//  /src/pages/admin/EditBook.jsx
 import { useEffect, useState } from 'react';
-import supabase from '../../utils/supabaseClient';
+import supabase from '../utils/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
 export default function EditBook() {
@@ -9,13 +9,15 @@ export default function EditBook() {
     const [selectedBook, setSelectedBook] = useState(null);
     const [tags, setTags] = useState([]);
     const [allTags, setAllTags] = useState([]);
+    const [newTag, setNewTag] = useState('');
     const [copies, setCopies] = useState([]);
+    const [error, setError] = useState(null);
 
     const navigate = useNavigate();
 
     useEffect(() => {
         const fetchTags = async () => {
-            const { data } = await supabase.from('tags').select('TagName');
+            const { data, error } = await supabase.from('tags').select('TagName');
             if (data) setAllTags(data.map(t => t.TagName));
         };
         fetchTags();
@@ -23,17 +25,26 @@ export default function EditBook() {
 
     const searchBooks = async (term) => {
         if (!term) return;
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('catalog')
             .select('Title, ISBN13, Authors')
-            .or(`Title.ilike.%${term}%,Authors.ilike.%${term}%,ISBN13.ilike.%${term}%`)
+            .ilike('Title', `%${term}%`)
             .limit(10);
         if (data) setSuggestions(data);
     };
 
     const selectBook = async (isbn) => {
-        const { data: book } = await supabase.from('catalog').select('*').eq('ISBN13', isbn).single();
-        const { data: copiesData } = await supabase.from('copyinfo').select(`*, circulationhistory!left(*), customerinfo:circulationhistory!left(MemberID)->customerinfo(CustomerName)`).eq('ISBN13', isbn);
+        const { data: book, error } = await supabase
+            .from('catalog')
+            .select('*')
+            .eq('ISBN13', isbn)
+            .single();
+
+        const { data: copiesData } = await supabase
+            .from('copyinfo')
+            .select('*')
+            .eq('ISBN13', isbn);
+
         setSelectedBook(book);
         setTags(book?.Tags || []);
         setCopies(copiesData || []);
@@ -42,7 +53,22 @@ export default function EditBook() {
     };
 
     const handleTagToggle = (tag) => {
-        setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+        setTags(prev => prev.includes(tag)
+            ? prev.filter(t => t !== tag)
+            : [...prev, tag]
+        );
+    };
+
+    const handleAddTag = async () => {
+        if (!newTag.trim()) return;
+        const { data, error } = await supabase.from('tags').insert({ TagName: newTag.trim() });
+        if (error) {
+            alert('Error adding tag: ' + error.message);
+        } else {
+            alert('Tag added!');
+            setAllTags([...allTags, newTag.trim()]);
+            setNewTag('');
+        }
     };
 
     const saveChanges = async () => {
@@ -98,34 +124,34 @@ export default function EditBook() {
             {selectedBook && (
                 <>
                     <div className="mt-6 space-y-4">
-                        <label>
-                            ISBN13
-                            <input className="w-full p-2 border rounded" value={selectedBook.ISBN13 || ''} disabled />
-                        </label>
-                        <label>
-                            Title
+                        <div>
+                            <label className="block text-sm font-medium">Title</label>
                             <input className="w-full p-2 border rounded" value={selectedBook.Title || ''} onChange={e => setSelectedBook({ ...selectedBook, Title: e.target.value })} />
-                        </label>
-                        <label>
-                            Authors
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium">Authors</label>
                             <input className="w-full p-2 border rounded" value={selectedBook.Authors || ''} onChange={e => setSelectedBook({ ...selectedBook, Authors: e.target.value })} />
-                        </label>
-                        <label>
-                            Description
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium">Description</label>
                             <textarea className="w-full p-2 border rounded" value={selectedBook.Description || ''} onChange={e => setSelectedBook({ ...selectedBook, Description: e.target.value })} />
-                        </label>
-                        <label>
-                            Thumbnail URL
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium">Min Age</label>
+                            <input className="w-full p-2 border rounded" value={selectedBook.MinAge || ''} onChange={e => setSelectedBook({ ...selectedBook, MinAge: parseInt(e.target.value) })} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium">Max Age</label>
+                            <input className="w-full p-2 border rounded" value={selectedBook.MaxAge || ''} onChange={e => setSelectedBook({ ...selectedBook, MaxAge: parseInt(e.target.value) })} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium">ISBN13</label>
+                            <input className="w-full p-2 border rounded" value={selectedBook.ISBN13 || ''} onChange={e => setSelectedBook({ ...selectedBook, ISBN13: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium">Thumbnail URL</label>
                             <input className="w-full p-2 border rounded" value={selectedBook.Thumbnail || ''} onChange={e => setSelectedBook({ ...selectedBook, Thumbnail: e.target.value })} />
-                        </label>
-                        <label>
-                            Min Age
-                            <input className="w-full p-2 border rounded" type="number" value={selectedBook.MinAge || ''} onChange={e => setSelectedBook({ ...selectedBook, MinAge: parseInt(e.target.value) })} />
-                        </label>
-                        <label>
-                            Max Age
-                            <input className="w-full p-2 border rounded" type="number" value={selectedBook.MaxAge || ''} onChange={e => setSelectedBook({ ...selectedBook, MaxAge: parseInt(e.target.value) })} />
-                        </label>
+                        </div>
                     </div>
 
                     {/* Tags */}
@@ -139,6 +165,25 @@ export default function EditBook() {
                                 </label>
                             ))}
                         </div>
+                        {/* Add New Tag */}
+                        <div className="mt-4">
+                            <h3 className="font-semibold mb-1">Add New Tag</h3>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={newTag}
+                                    onChange={(e) => setNewTag(e.target.value)}
+                                    className="p-2 border rounded w-full"
+                                    placeholder="Enter new tag name"
+                                />
+                                <button
+                                    onClick={handleAddTag}
+                                    className="bg-blue-600 text-white px-3 py-1 rounded"
+                                >
+                                    Add
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <button onClick={saveChanges} className="mt-4 bg-green-600 text-white px-4 py-2 rounded">
@@ -150,29 +195,28 @@ export default function EditBook() {
                         <h2 className="text-lg font-semibold mb-2">Copies</h2>
                         {copies.map((copy, idx) => (
                             <div key={copy.CopyID} className="border rounded p-2 mb-2">
-                                <label>
-                                    Copy Number
-                                    <input className="p-1 border rounded w-full" type="number" value={copy.CopyNumber || ''} onChange={e => handleCopyChange(idx, 'CopyNumber', parseInt(e.target.value))} />
-                                </label>
-                                <label>
-                                    Copy Location ID
-                                    <input className="p-1 border rounded w-full" value={copy.CopyLocationID || ''} onChange={e => handleCopyChange(idx, 'CopyLocationID', e.target.value)} />
-                                </label>
-                                <label>
-                                    Buy Price
-                                    <input className="p-1 border rounded w-full" type="number" value={copy.BuyPrice || ''} onChange={e => handleCopyChange(idx, 'BuyPrice', parseFloat(e.target.value))} />
-                                </label>
-                                <label>
-                                    Ask Price
-                                    <input className="p-1 border rounded w-full" type="number" value={copy.AskPrice || ''} onChange={e => handleCopyChange(idx, 'AskPrice', parseFloat(e.target.value))} />
-                                </label>
-                                <label>
-                                    Copy Booked
-                                    <select className="p-1 border rounded w-full" value={copy.CopyBooked ? 'true' : 'false'} onChange={e => handleCopyChange(idx, 'CopyBooked', e.target.value === 'true')}>
-                                        <option value="false">No</option>
-                                        <option value="true">Yes</option>
-                                    </select>
-                                </label>
+                                <div className="flex flex-col gap-2">
+                                    <div>
+                                        <label className="block text-sm font-medium">Copy Number</label>
+                                        <input className="p-1 border rounded" value={copy.CopyNumber} onChange={e => handleCopyChange(idx, 'CopyNumber', parseInt(e.target.value))} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Copy Location ID</label>
+                                        <input className="p-1 border rounded" value={copy.CopyLocationID || ''} onChange={e => handleCopyChange(idx, 'CopyLocationID', e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Buy Price</label>
+                                        <input className="p-1 border rounded" value={copy.BuyPrice || ''} onChange={e => handleCopyChange(idx, 'BuyPrice', parseFloat(e.target.value))} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Ask Price</label>
+                                        <input className="p-1 border rounded" value={copy.AskPrice || ''} onChange={e => handleCopyChange(idx, 'AskPrice', parseFloat(e.target.value))} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Copy Booked</label>
+                                        <input className="p-1 border rounded" value={copy.CopyBooked ? 'true' : 'false'} onChange={e => handleCopyChange(idx, 'CopyBooked', e.target.value === 'true')} />
+                                    </div>
+                                </div>
                             </div>
                         ))}
                         <button onClick={saveCopyChanges} className="mt-2 bg-blue-600 text-white px-4 py-2 rounded">
