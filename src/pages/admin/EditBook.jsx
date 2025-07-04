@@ -1,4 +1,4 @@
-//  /src/pages/admin/EditBook.jsx
+// /src/pages/admin/EditBook.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../../utils/supabaseClient';
 import { useNavigate } from 'react-router-dom';
@@ -87,6 +87,7 @@ export default function EditBook() {
             <h1 className="text-2xl font-bold mb-4">Edit Book (Admin)</h1>
 
             {/* Book Search */}
+            <label className="block mb-1 font-medium">Search Book</label>
             <input
                 type="text"
                 value={searchTerm}
@@ -107,20 +108,59 @@ export default function EditBook() {
                 </ul>
             )}
 
-            {/* Book Details */}
             {selectedBook && (
                 <>
                     <div className="mt-6 space-y-4">
-                        <input className="w-full p-2 border rounded" value={selectedBook.Title || ''} onChange={e => setSelectedBook({ ...selectedBook, Title: e.target.value })} />
-                        <input className="w-full p-2 border rounded" value={selectedBook.Authors || ''} onChange={e => setSelectedBook({ ...selectedBook, Authors: e.target.value })} />
-                        <textarea className="w-full p-2 border rounded" value={selectedBook.Description || ''} onChange={e => setSelectedBook({ ...selectedBook, Description: e.target.value })} />
-                        <input className="w-full p-2 border rounded" value={selectedBook.Min_Age || ''} onChange={e => setSelectedBook({ ...selectedBook, Min_Age: parseInt(e.target.value) })} />
-                        <input className="w-full p-2 border rounded" value={selectedBook.Max_Age || ''} onChange={e => setSelectedBook({ ...selectedBook, Max_Age: parseInt(e.target.value) })} />
+
+                        <div>
+                            <label className="block font-medium">Book Title</label>
+                            <input className="w-full p-2 border rounded"
+                                   value={selectedBook.Title || ''}
+                                   onChange={e => setSelectedBook({ ...selectedBook, Title: e.target.value })}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block font-medium">Author(s)</label>
+                            <input className="w-full p-2 border rounded"
+                                   value={selectedBook.Authors || ''}
+                                   onChange={e => setSelectedBook({ ...selectedBook, Authors: e.target.value })}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block font-medium">Book Description</label>
+                            <textarea className="w-full p-2 border rounded"
+                                      rows="3"
+                                      value={selectedBook.Description || ''}
+                                      onChange={e => setSelectedBook({ ...selectedBook, Description: e.target.value })}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block font-medium">Minimum Age (for readers)</label>
+                            <input
+                                type="number"
+                                className="w-full p-2 border rounded"
+                                value={selectedBook.Min_Age || ''}
+                                onChange={e => setSelectedBook({ ...selectedBook, Min_Age: parseInt(e.target.value) })}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block font-medium">Maximum Age (for readers)</label>
+                            <input
+                                type="number"
+                                className="w-full p-2 border rounded"
+                                value={selectedBook.Max_Age || ''}
+                                onChange={e => setSelectedBook({ ...selectedBook, Max_Age: parseInt(e.target.value) })}
+                            />
+                        </div>
                     </div>
 
                     {/* Tags */}
                     <div className="mt-4">
-                        <h2 className="font-semibold">Tags</h2>
+                        <h2 className="font-semibold mb-1">Select Tags (genres, themes, etc.)</h2>
                         <div className="flex flex-wrap gap-2 mt-2">
                             {allTags.map(tag => (
                                 <label key={tag} className="flex items-center gap-1 text-sm">
@@ -137,15 +177,31 @@ export default function EditBook() {
 
                     {/* Copies Section */}
                     <div className="mt-6">
-                        <h2 className="text-lg font-semibold mb-2">Copies</h2>
+                        <h2 className="text-lg font-semibold mb-2">Copies (Individual Physical Books)</h2>
                         {copies.map((copy, idx) => (
                             <div key={copy.CopyID} className="border rounded p-2 mb-2">
                                 <div className="flex flex-col gap-2">
-                                    <input className="p-1 border rounded" value={copy.CopyNumber} onChange={e => handleCopyChange(idx, 'CopyNumber', parseInt(e.target.value))} />
-                                    <input className="p-1 border rounded" value={copy.CopyLocation} onChange={e => handleCopyChange(idx, 'CopyLocation', e.target.value)} />
+                                    <div>
+                                        <label className="block text-sm font-medium">Copy Number</label>
+                                        <input
+                                            className="p-1 border rounded w-full"
+                                            value={copy.CopyNumber}
+                                            onChange={e => handleCopyChange(idx, 'CopyNumber', parseInt(e.target.value))}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium">Location (Where the copy is stored or moved)</label>
+                                        <input
+                                            className="p-1 border rounded w-full"
+                                            value={copy.CopyLocation}
+                                            onChange={e => handleCopyChange(idx, 'CopyLocation', e.target.value)}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         ))}
+
                         <button onClick={saveCopyChanges} className="mt-2 bg-blue-600 text-white px-4 py-2 rounded">
                             Save Copy Info
                         </button>
