@@ -70,7 +70,8 @@ function AppRoutes() {
     <>
       <Navbar user={user} />
       <Routes>
-        <Route path="/" element={<Catalog user={user} />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/home" element={<HomePage />} />
         <Route path="/catalog" element={<Catalog user={user} />} />
         <Route path="/login" element={<Login />} />
         <Route path="/my-books" element={<MyBooks user={user} />} />
