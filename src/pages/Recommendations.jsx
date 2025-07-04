@@ -157,11 +157,11 @@ export default function EditBook({ user }) {
                 </label>
                 <label>
                   Minimum Age
-                  <input type="number" className="w-full p-2 border rounded" value={selectedBook.Min_Age || ''} onChange={e => setSelectedBook({ ...selectedBook, Min_Age: parseInt(e.target.value) })} />
+                  <input type="number" className="w-full p-2 border rounded" value={selectedBook.MinAge || ''} onChange={e => setSelectedBook({ ...selectedBook, Min_Age: parseInt(e.target.value) })} />
                 </label>
                 <label>
                   Maximum Age
-                  <input type="number" className="w-full p-2 border rounded" value={selectedBook.Max_Age || ''} onChange={e => setSelectedBook({ ...selectedBook, Max_Age: parseInt(e.target.value) })} />
+                  <input type="number" className="w-full p-2 border rounded" value={selectedBook.MaxAge || ''} onChange={e => setSelectedBook({ ...selectedBook, Max_Age: parseInt(e.target.value) })} />
                 </label>
               </div>
 
