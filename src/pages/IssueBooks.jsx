@@ -250,6 +250,8 @@ export default function IssueBooks() {
     link.download = `bookerfly_${name}_${Date.now()}.png`;
     link.href = dataUrl;
     link.click();
+    console.log("✅ Button clicked");
+
   };
 
 

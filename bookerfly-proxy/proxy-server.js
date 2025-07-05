@@ -18,11 +18,13 @@ app.get('/proxy', async (req, res) => {
         console.log('Proxying:', parsedUrl.toString());
 
         const response = await axios.get(parsedUrl.toString(), {
-            responseType: 'stream', // 🔁 Stream instead of arraybuffer
+            responseType: 'arraybuffer',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                'Referer': 'https://books.google.com', // 🔐 Helps avoid blocks
+                'User-Agent': 'Mozilla/5.0',
+                'Referer': 'https://books.google.com/',
+                'Accept': 'image/*,*/*',
             },
+            timeout: 8000,
         });
 
         res.set('Content-Type', response.headers['content-type']);
