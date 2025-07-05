@@ -233,6 +233,8 @@ export default function IssueBooks() {
     if (!element) {
       console.warn('Collage element not found');
       return;
+    } else {
+      console.log('element found:', element);
     }
 
     await waitForImages(element);
