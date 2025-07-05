@@ -230,6 +230,7 @@ export default function IssueBooks() {
   };
 
   const handleDownloadCollage = async () => {
+    console.log('📸 Download button clicked');
     const element = document.getElementById('collage-preview');
     if (!element) return;
 
