@@ -387,7 +387,7 @@ export default function IssueBooks() {
           <div className="grid grid-cols-3 gap-2">
             {books.filter(b => !b.error && b.Thumbnail?.startsWith('http')).map((book, index) => (
                 <img
-                    key={book.ISBN13 || index
+                    key={book.ISBN13 || index}
                     src={book.Thumbnail.replace(/^http:/, 'https:')}
                     //src={`http://localhost:5000/proxy?url=${encodeURIComponent(book.Thumbnail)}`}
                     alt={book.Title}
