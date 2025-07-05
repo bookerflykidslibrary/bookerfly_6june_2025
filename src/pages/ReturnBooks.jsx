@@ -92,22 +92,40 @@ export default function ReturnBooks() {
   };
 
   const handleReturn = async () => {
-    const ids = booksToReturn.filter(b => selectedBooks[b.BookingID]).map(b => b.BookingID);
-    if (ids.length === 0) return;
+    const selected = booksToReturn.filter(b => selectedBooks[b.BookingID]);
+    const bookingIds = selected.map(b => b.BookingID);
+    const copyIds = selected.map(b => b.CopyID);
+
+    if (bookingIds.length === 0) return;
 
     const today = new Date().toISOString();
-    const { error } = await supabase
-      .from('circulationhistory')
-      .update({ ReturnDate: today })
-      .in('BookingID', ids);
 
-    if (!error) {
-      setMessage(`✅ Books returned for ${selectedUser.CustomerName}`);
-      setBooksToReturn(prev => prev.filter(b => !ids.includes(b.BookingID)));
-      setSelectedBooks({});
-    } else {
-      setMessage('❌ Error returning books: ' + error.message);
+    // Step 1: Mark books returned
+    const { error: updateError } = await supabase
+        .from('circulationhistory')
+        .update({ ReturnDate: today })
+        .in('BookingID', bookingIds);
+
+    if (updateError) {
+      setMessage('❌ Error returning books: ' + updateError.message);
+      return;
     }
+
+    // Step 2: Unmark booked copies
+    const { error: copyError } = await supabase
+        .from('copyinfo')
+        .update({ CopyBooked: false })
+        .in('CopyID', copyIds);
+
+    if (copyError) {
+      setMessage('⚠️ Return date updated, but failed to unbook copies: ' + copyError.message);
+    } else {
+      setMessage(`✅ Books returned for ${selectedUser.CustomerName}`);
+    }
+
+    // Step 3: Refresh state
+    setBooksToReturn(prev => prev.filter(b => !bookingIds.includes(b.BookingID)));
+    setSelectedBooks({});
   };
 
   if (!isAdmin) {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { FaExternalLinkAlt } from 'react-icons/fa';
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 2000;
 
 export default function Catalog({ user }) {
   const [books, setBooks] = useState([]);
@@ -125,7 +125,7 @@ export default function Catalog({ user }) {
       let max = maxAge ? parseInt(maxAge) : null;
 
       if (min !== null && max === null) {
-        max = min + 3;
+        max = min;
       } else if (max !== null && min === null) {
         min = Math.max(0, max - 3);
       }
@@ -193,18 +193,12 @@ export default function Catalog({ user }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <input
                 type="number"
-                placeholder="Min Age"
+                placeholder="Enter child's age"
                 className="input"
                 value={filters.minAge}
                 onChange={e => handleFilterChange('minAge', e.target.value)}
             />
-            <input
-                type="number"
-                placeholder="Max Age"
-                className="input"
-                value={filters.maxAge}
-                onChange={e => handleFilterChange('maxAge', e.target.value)}
-            />
+
             <input
                 type="text"
                 placeholder="Author"
@@ -221,9 +215,7 @@ export default function Catalog({ user }) {
             />
           </div>
 
-          <p className="text-xs text-gray-500 mt-1">
-            Tip: If only <strong>Min Age</strong> is filled, we assume +3 years. If only <strong>Max Age</strong> is filled, we assume -3 years.
-          </p>
+
 
           <div className="mt-3 flex gap-2">
             <button
@@ -265,13 +257,13 @@ export default function Catalog({ user }) {
             <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {books.map(book => (
                   <div key={book.BookID} className="bg-white rounded-xl p-4 shadow-md flex flex-col">
-                    <img src={book.Thumbnail} alt={book.Title} className="h-40 object-contain mb-2 mx-auto" />
+                    <img src={book.Thumbnail} alt={book.Title} className="h-60 object-contain mb-2 mx-auto" />
                     <h2 className="text-lg font-bold text-purple-800">{book.Title}</h2>
                     <p className="text-sm text-gray-600 italic">{book.Authors}</p>
                     <p className="text-xs text-gray-800 mt-1">
                       {book.Description?.length > 120 ? (
                           expandedDesc[book.BookID] ? book.Description : `${book.Description?.substring(0, 120)}... `
-                      ) : book.Description}
+                      ) : book.Descriptipon}
                       {book.Description?.length > 120 && (
                           <span onClick={() => toggleDescription(book.BookID)} className="text-blue-500 cursor-pointer underline">more</span>
                       )}
@@ -287,7 +279,7 @@ export default function Catalog({ user }) {
                       <div className="flex flex-col sm:flex-row gap-2">
                         {book.minPrice && <span className="text-green-600 font-semibold">Buy from us at ₹{book.minPrice}</span>}
                         <a
-                            href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=123432543556`}
+                            href={`https://www.amazon.in/s?k=${encodeURIComponent(book.Title + ' ' + book.ISBN13)}&tag=vandana1230b9-21`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-orange-600 hover:underline"

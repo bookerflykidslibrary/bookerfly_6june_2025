@@ -22,7 +22,7 @@ export default function AdminCustomerEditor({ user }) {
           .from('customerinfo')
           .select('CustomerID, CustomerName, StartDate, EndDate')
           .order('CustomerID', { ascending: true })
-          .limit(20);
+          .limit(2000);
 
       if (!error) setDefaultCustomers(data || []);
       else console.error('❌ Default customer fetch error:', error.message);
