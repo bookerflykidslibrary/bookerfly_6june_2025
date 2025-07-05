@@ -1,53 +1,38 @@
-// proxy-server.js
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
 
 const app = express();
-//const PORT = 5000;
 const PORT = process.env.PORT || 5000;
-
 
 app.use(cors());
 
 app.get('/proxy', async (req, res) => {
     let url = req.query.url;
-
-    if (!url) {
-        return res.status(400).send('Missing URL');
-    }
+    if (!url) return res.status(400).send('Missing URL');
 
     try {
-        // Decode the URL in case it's encoded
         url = decodeURIComponent(url);
+        const parsedUrl = new URL(url);
 
-        // Validate it's a proper URL
-        const parsedUrl = new URL(url); // This throws if the URL is invalid
-
-        console.log('➡️ Proxying URL:', parsedUrl.toString());
+        console.log('Proxying:', parsedUrl.toString());
 
         const response = await axios.get(parsedUrl.toString(), {
-            responseType: 'arraybuffer',
+            responseType: 'stream', // 🔁 Stream instead of arraybuffer
             headers: {
-                'User-Agent': 'Mozilla/5.0', // Helps avoid some blocking
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                'Referer': 'https://books.google.com', // 🔐 Helps avoid blocks
             },
         });
 
-        // Optional: Check if the content is an image
-        const contentType = response.headers['content-type'] || '';
-        if (!contentType.startsWith('image/')) {
-            return res.status(400).send('URL does not point to an image');
-        }
-
-        res.set('Content-Type', contentType);
-        res.send(response.data);
+        res.set('Content-Type', response.headers['content-type']);
+        response.data.pipe(res); // 🚰 Pipe stream directly to response
     } catch (err) {
-        console.error('❌ Proxy error:', err.message);
-        console.error('🪵 Full error:', err);
+        console.error('Proxy error:', err.message);
         res.status(500).send('Failed to fetch image');
     }
 });
 
 app.listen(PORT, () => {
-    console.log(`✅ Proxy server running on http://localhost:${PORT}`);
+    console.log(`✅ Proxy server running on port ${PORT}`);
 });
