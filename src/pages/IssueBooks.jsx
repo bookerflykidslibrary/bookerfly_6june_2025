@@ -216,18 +216,47 @@ export default function IssueBooks() {
   };
 
   // Inside IssueBooks component, above handleDownloadCollage
-  const waitForImages = (element) => {
+
+  const waitForImages = (element, timeout = 5000) => {
     const images = element.querySelectorAll('img');
-    return Promise.all(
-        Array.from(images).map((img) => {
-          if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
-          return new Promise((resolve) => {
-            img.onload = resolve;
-            img.onerror = resolve;
-          });
-        })
-    );
+
+    if (images.length === 0) {
+      console.log("✅ No images to wait for.");
+      return Promise.resolve();
+    }
+
+    console.log(`⏳ Waiting for ${images.length} images to load...`);
+
+    return Promise.race([
+      Promise.all(
+          Array.from(images).map((img, i) => {
+            return new Promise((resolve) => {
+              if (img.complete && img.naturalHeight !== 0) {
+                console.log(`✅ Image ${i + 1} already loaded`);
+                resolve();
+              } else {
+                img.onload = () => {
+                  console.log(`✅ Image ${i + 1} loaded`);
+                  resolve();
+                };
+                img.onerror = () => {
+                  console.warn(`❌ Image ${i + 1} failed to load: ${img.src}`);
+                  resolve(); // Resolve even if failed to prevent hang
+                };
+              }
+            });
+          })
+      ),
+      new Promise((resolve) => {
+        setTimeout(() => {
+          console.warn(`⚠️ Timeout after ${timeout}ms while waiting for images.`);
+          resolve(); // Resolve anyway to not block html2canvas
+        }, timeout);
+      }),
+    ]);
   };
+
+
 
   const handleDownloadCollage = async () => {
     console.log('📸 Download button clicked');
