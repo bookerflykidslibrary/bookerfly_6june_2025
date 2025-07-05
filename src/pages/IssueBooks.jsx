@@ -233,7 +233,7 @@ export default function IssueBooks() {
     console.log('📸 Download button clicked');
     const element = document.getElementById('collage-preview');
     if (!element) return;
-
+    console.log('I crossed element checkk');
     // ✅ Wait for all <img> elements to load
     await waitForImages(element);
 
