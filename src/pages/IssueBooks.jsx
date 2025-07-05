@@ -232,6 +232,7 @@ export default function IssueBooks() {
   const handleDownloadCollage = async () => {
     console.log('📸 Download button clicked');
     const element = document.getElementById('collage-preview');
+    console.log('element found?', !!element);
     if (!element) return;
 
     // ✅ Wait for all <img> elements to load
