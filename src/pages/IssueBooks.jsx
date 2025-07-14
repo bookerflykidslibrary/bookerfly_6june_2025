@@ -217,7 +217,7 @@ export default function IssueBooks() {
 
   // Inside IssueBooks component, above handleDownloadCollage
 
-  const waitForImages = (element, timeout = 5000) => {
+  const waitForImages = (element, timeout = 50000) => {
     const images = element.querySelectorAll('img');
 
     if (images.length === 0) {
