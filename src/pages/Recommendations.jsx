@@ -1,229 +1,446 @@
-//  /src/pages/admin/EditBook.jsx
-import { useEffect, useState } from 'react';
+// Full updated IssueBooks.jsx component with collage generation
+
+import React, { useState, useEffect } from 'react';
 import supabase from '../utils/supabaseClient';
-import { useNavigate } from 'react-router-dom';
+import ScannerDialog from '../components/ScannerDialog';
+import html2canvas from 'html2canvas';
 
-export default function EditBook() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [selectedBook, setSelectedBook] = useState(null);
-  const [tags, setTags] = useState([]);
-  const [allTags, setAllTags] = useState([]);
-  const [newTag, setNewTag] = useState('');
-  const [copies, setCopies] = useState([]);
-  const [error, setError] = useState(null);
-
-  const navigate = useNavigate();
+export default function IssueBooks() {
+  const [bookInputs, setBookInputs] = useState(Array(10).fill({ value: '', type: 'ISBN13' }));
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerSuggestions, setCustomerSuggestions] = useState([]);
+  const [books, setBooks] = useState([]);
+  const [confirming, setConfirming] = useState(false);
+  const [message, setMessage] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminLocation, setAdminLocation] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [targetIndex, setTargetIndex] = useState(null);
+  const [titleSuggestions, setTitleSuggestions] = useState([]);
+  const [focusedIndex, setFocusedIndex] = useState(null);
 
   useEffect(() => {
-    const fetchTags = async () => {
-      const { data, error } = await supabase.from('tags').select('TagName');
-      if (data) setAllTags(data.map(t => t.TagName));
+    const checkAdmin = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: admin } = await supabase
+          .from('admininfo')
+          .select('AdminLocation')
+          .eq('AdminID', user.id)
+          .single();
+      if (admin) {
+        setIsAdmin(true);
+        setAdminLocation(admin.AdminLocation);
+      }
     };
-    fetchTags();
+    checkAdmin();
   }, []);
 
-  const searchBooks = async (term) => {
-    if (!term) return;
-    const { data, error } = await supabase
-        .from('catalog')
-        .select('Title, ISBN13, Authors')
-        .ilike('Title', `%${term}%`)
-        .limit(10);
-    if (data) setSuggestions(data);
-  };
+  useEffect(() => {
+    if (customerSearch.trim().length < 2) {
+      setCustomerSuggestions([]);
+      return;
+    }
+    const fetchSuggestions = async () => {
+      const trimmed = customerSearch.trim();
+      const orClause = [
+        `CustomerName.ilike.*${trimmed}*`,
+        `EmailID.ilike.*${trimmed}*`
+      ];
+      const { data, error } = await supabase
+          .from('customerinfo')
+          .select('CustomerID, CustomerName, EmailID')
+          .or(orClause.join(','))
+          .limit(10);
+      if (!error) setCustomerSuggestions(data || []);
+      else setCustomerSuggestions([]);
+    };
+    fetchSuggestions();
+  }, [customerSearch]);
 
-  const selectBook = async (isbn) => {
-    const { data: book, error } = await supabase
-        .from('catalog')
+  const handleSelectCustomer = async (customerId) => {
+    const { data: customer } = await supabase
+        .from('customerinfo')
         .select('*')
-        .eq('ISBN13', isbn)
+        .eq('CustomerID', customerId)
         .single();
 
-    const { data: copiesData } = await supabase
-        .from('copyinfo')
-        .select('*')
-        .eq('ISBN13', isbn);
+    if (customer) {
+      setSelectedCustomer(customer);
+      setCustomerSearch(`${customer.CustomerName} (${customer.EmailID})`);
+      setCustomerSuggestions([]);
+      const { data: plan } = await supabase
+          .from('membershipplans')
+          .select('NumberOfBooks')
+          .eq('PlanName', customer.SubscriptionPlan)
+          .single();
 
-    setSelectedBook(book);
-    setTags(book?.Tags || []);
-    setCopies(copiesData || []);
-    setSuggestions([]);
-    setSearchTerm(book.Title);
-  };
+      const bookLimit = parseInt(plan?.NumberOfBooks || '0', 10);
+      const { data: wishlist } = await supabase
+          .from('circulationfuture')
+          .select('ISBN13')
+          .eq('userid', customer.userid)
+          .order('SerialNumberOfIssue')
+          .limit(bookLimit);
 
-  const handleTagToggle = (tag) => {
-    setTags(prev => prev.includes(tag)
-        ? prev.filter(t => t !== tag)
-        : [...prev, tag]
-    );
-  };
-
-  const handleAddTag = async () => {
-    if (!newTag.trim()) return;
-    const { data, error } = await supabase.from('tags').insert({ TagName: newTag.trim() });
-    if (error) {
-      alert('Error adding tag: ' + error.message);
-    } else {
-      alert('Tag added!');
-      setAllTags([...allTags, newTag.trim()]);
-      setNewTag('');
+      const inputs = Array(10).fill({ value: '', type: 'ISBN13' });
+      wishlist?.forEach((w, i) => {
+        if (i < 10) inputs[i] = { value: w.ISBN13, type: 'ISBN13' };
+      });
+      setBookInputs(inputs);
     }
   };
 
-  const saveChanges = async () => {
-    const { error } = await supabase
+  const fetchBookTitleSuggestions = async (text) => {
+    const { data } = await supabase
         .from('catalog')
-        .update({ ...selectedBook, Tags: tags })
-        .eq('ISBN13', selectedBook.ISBN13);
-    if (!error) alert('Saved successfully!');
-    else alert('Error saving book: ' + error.message);
+        .select('Title, ISBN13')
+        .ilike('Title', `%${text}%`)
+        .limit(20);
+
+    setTitleSuggestions(data || []);
   };
 
-  const handleCopyChange = (index, field, value) => {
-    setCopies(prev => {
-      const updated = [...prev];
-      updated[index][field] = value;
-      return updated;
-    });
-  };
-
-  const saveCopyChanges = async () => {
-    for (const copy of copies) {
-      await supabase.from('copyinfo').update(copy).eq('CopyID', copy.CopyID);
+  const handleInputChange = (index, field, value) => {
+    const updated = [...bookInputs];
+    updated[index] = { ...updated[index], [field]: value };
+    setBookInputs(updated);
+    if (field === 'value' && updated[index].type === 'ISBN13' && value.length >= 3) {
+      setFocusedIndex(index);
+      fetchBookTitleSuggestions(value);
+    } else {
+      setTitleSuggestions([]);
     }
-    alert('Copy changes saved.');
   };
+
+  const handleReview = async () => {
+    if (!selectedCustomer?.CustomerID) {
+      setMessage('Please select a customer.');
+      return;
+    }
+    const filtered = bookInputs.filter(entry => entry.value.trim() !== '');
+    if (filtered.length === 0) {
+      setMessage('Please enter at least one Book ID or scan.');
+      return;
+    }
+    let allBooks = [];
+    for (let entry of filtered) {
+      const isbn = entry.value;
+      if (entry.type === 'ISBN13') {
+        const { data: copy } = await supabase
+            .from('copyinfo')
+            .select('CopyID, ISBN13, CopyNumber')
+            .eq('ISBN13', isbn)
+            .eq('CopyLocation', adminLocation)
+            .eq('CopyBooked', false)
+            .limit(1)
+            .maybeSingle();
+
+        if (!copy) {
+          allBooks.push({ error: `No available copy for ISBN: ${isbn}` });
+          continue;
+        }
+
+        const { data: book } = await supabase
+            .from('catalog')
+            .select('Title, Authors, ISBN13, Thumbnail')
+            .eq('ISBN13', isbn)
+            .single();
+
+        allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
+      }
+    }
+    setBooks(allBooks);
+    setConfirming(true);
+    setMessage('');
+  };
+
+  const handleConfirm = async () => {
+    if (!selectedCustomer?.userid) {
+      setMessage('❌ Cannot issue books — userid missing for selected customer.');
+      return;
+    }
+    const today = new Date().toISOString();
+    const validBooks = books.filter(b => !b.error);
+    const records = validBooks.map(book => ({
+      LibraryBranch: adminLocation,
+      ISBN13: book.ISBN13,
+      CopyID: book.CopyID,
+      BookingDate: today,
+      ReturnDate: null,
+      MemberID: selectedCustomer.CustomerID,
+      userid: selectedCustomer.userid,
+      Comment: '',
+    }));
+
+    const { error } = await supabase.from('circulationhistory').insert(records);
+    if (!error) {
+      await supabase
+          .from('copyinfo')
+          .update({ CopyBooked: true })
+          .in('CopyID', validBooks.map(b => b.CopyID));
+
+      const { data: wishlist } = await supabase
+          .from('circulationfuture')
+          .select('CirculationID, ISBN13')
+          .eq('userid', selectedCustomer.userid);
+
+      const issuedISBNs = validBooks.map(b => b.ISBN13);
+      const toDelete = wishlist.filter(w => issuedISBNs.includes(w.ISBN13));
+      await supabase
+          .from('circulationfuture')
+          .delete()
+          .in('CirculationID', toDelete.map(w => w.CirculationID));
+
+      const { data: remaining } = await supabase
+          .from('circulationfuture')
+          .select('CirculationID')
+          .eq('userid', selectedCustomer.userid)
+          .order('SerialNumberOfIssue');
+
+      for (let i = 0; i < remaining.length; i++) {
+        await supabase
+            .from('circulationfuture')
+            .update({ SerialNumberOfIssue: i + 1 })
+            .eq('CirculationID', remaining[i].CirculationID);
+      }
+
+      setMessage('✅ Books issued successfully! Have fun!');
+      setConfirming(false);
+      setBooks([]);
+      setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
+    } else {
+      setMessage('Error issuing books: ' + error.message);
+    }
+  };
+
+  // Inside IssueBooks component, above handleDownloadCollage
+
+  const waitForImages = (element, timeout = 50000) => {
+    const images = element.querySelectorAll('img');
+
+    if (images.length === 0) {
+      console.log("✅ No images to wait for.");
+      return Promise.resolve();
+    }
+
+    console.log(`⏳ Waiting for ${images.length} images to load...`);
+
+    return Promise.race([
+      Promise.all(
+          Array.from(images).map((img, i) => {
+            return new Promise((resolve) => {
+              if (img.complete && img.naturalHeight !== 0) {
+                console.log(`✅ Image ${i + 1} already loaded`);
+                resolve();
+              } else {
+                img.onload = () => {
+                  console.log(`✅ Image ${i + 1} loaded`);
+                  resolve();
+                };
+                img.onerror = () => {
+                  console.warn(`❌ Image ${i + 1} failed to load: ${img.src}`);
+                  resolve(); // Resolve even if failed to prevent hang
+                };
+              }
+            });
+          })
+      ),
+      new Promise((resolve) => {
+        setTimeout(() => {
+          console.warn(`⚠️ Timeout after ${timeout}ms while waiting for images.`);
+          resolve(); // Resolve anyway to not block html2canvas
+        }, timeout);
+      }),
+    ]);
+  };
+
+
+
+  const handleDownloadCollage = async () => {
+    console.log('📸 Download button clicked');
+    const element = document.getElementById('collage-preview');
+    if (!element) return;
+
+    // ✅ Wait for all <img> elements to load
+    await waitForImages(element);
+    console.log('Images loaded');
+    // ✅ Capture collage
+    const canvas = await html2canvas(element, {
+      backgroundColor: '#fff',
+      scale: 2,
+      useCORS: true, // make sure this is present
+    });
+
+    const dataUrl = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    const name = selectedCustomer?.CustomerName?.replace(/\s+/g, '_') || 'books';
+    link.download = `bookerfly_${name}_${Date.now()}.png`;
+    link.href = dataUrl;
+    link.click();
+    console.log("✅ Button clicked");
+
+  };
+
+
 
   return (
-      <div className="p-4 max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Edit Book (Admin)</h1>
-
-        {/* Book Search */}
+      <div className="max-w-md mx-auto p-4">
         <input
             type="text"
-            value={searchTerm}
-            onChange={e => {
-              setSearchTerm(e.target.value);
-              searchBooks(e.target.value);
-            }}
-            className="w-full p-2 border rounded"
-            placeholder="Search by title, author, or ISBN13..."
+            placeholder="Search by Name or Email"
+            className="w-full p-2 mb-2 border border-gray-300 rounded"
+            value={customerSearch}
+            onChange={(e) => setCustomerSearch(e.target.value)}
         />
-        {suggestions.length > 0 && (
-            <ul className="bg-white shadow border mt-2 rounded">
-              {suggestions.map((s, idx) => (
-                  <li key={idx} className="p-2 hover:bg-gray-100 cursor-pointer" onClick={() => selectBook(s.ISBN13)}>
-                    {s.Title} — {s.Authors}
+        {customerSuggestions.length > 0 && (
+            <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded z-10 relative">
+              {customerSuggestions.map((c) => (
+                  <li
+                      key={c.CustomerID}
+                      onClick={() => handleSelectCustomer(c.CustomerID)}
+                      className="p-2 hover:bg-blue-100 cursor-pointer"
+                  >
+                    #{c.CustomerID} — {c.CustomerName}, {c.EmailID}
                   </li>
               ))}
             </ul>
         )}
 
-        {/* Book Details */}
-        {selectedBook && (
-            <>
-              <div className="mt-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium">Title</label>
-                  <input className="w-full p-2 border rounded" value={selectedBook.Title || ''} onChange={e => setSelectedBook({ ...selectedBook, Title: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Authors</label>
-                  <input className="w-full p-2 border rounded" value={selectedBook.Authors || ''} onChange={e => setSelectedBook({ ...selectedBook, Authors: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Description</label>
-                  <textarea className="w-full p-2 border rounded" value={selectedBook.Description || ''} onChange={e => setSelectedBook({ ...selectedBook, Description: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Min Age</label>
-                  <input className="w-full p-2 border rounded" value={selectedBook.MinAge || ''} onChange={e => setSelectedBook({ ...selectedBook, MinAge: parseInt(e.target.value) })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Max Age</label>
-                  <input className="w-full p-2 border rounded" value={selectedBook.MaxAge || ''} onChange={e => setSelectedBook({ ...selectedBook, MaxAge: parseInt(e.target.value) })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">ISBN13</label>
-                  <input className="w-full p-2 border rounded" value={selectedBook.ISBN13 || ''} onChange={e => setSelectedBook({ ...selectedBook, ISBN13: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium">Thumbnail URL</label>
-                  <input className="w-full p-2 border rounded" value={selectedBook.Thumbnail || ''} onChange={e => setSelectedBook({ ...selectedBook, Thumbnail: e.target.value })} />
-                </div>
+        {bookInputs.map((entry, index) => (
+            <div key={index} className="flex flex-col mb-4 relative">
+              <div className="flex gap-2 items-center">
+                <select
+                    value={entry.type}
+                    onChange={(e) => handleInputChange(index, 'type', e.target.value)}
+                    className="p-2 border rounded w-1/3"
+                >
+                  <option value="ISBN13">ISBN13</option>
+                  <option value="CopyLocationID">CopyLocation</option>
+                </select>
+                <input
+                    type="text"
+                    placeholder={`Book ${index + 1}`}
+                    value={entry.value}
+                    onChange={(e) => handleInputChange(index, 'value', e.target.value)}
+                    onFocus={() => setFocusedIndex(index)}
+                    className="flex-1 p-2 border border-gray-300 rounded"
+                />
+                <button
+                    type="button"
+                    onClick={() => {
+                      setTargetIndex(index);
+                      setScannerOpen(true);
+                    }}
+                    className="bg-blue-600 text-white px-2 py-1 rounded"
+                >📷</button>
               </div>
 
-              {/* Tags */}
-              <div className="mt-4">
-                <h2 className="font-semibold">Tags</h2>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {allTags.map(tag => (
-                      <label key={tag} className="flex items-center gap-1 text-sm">
-                        <input type="checkbox" checked={tags.includes(tag)} onChange={() => handleTagToggle(tag)} />
-                        {tag}
-                      </label>
-                  ))}
-                </div>
-                {/* Add New Tag */}
-                <div className="mt-4">
-                  <h3 className="font-semibold mb-1">Add New Tag</h3>
-                  <div className="flex gap-2">
-                    <input
-                        type="text"
-                        value={newTag}
-                        onChange={(e) => setNewTag(e.target.value)}
-                        className="p-2 border rounded w-full"
-                        placeholder="Enter new tag name"
-                    />
-                    <button
-                        onClick={handleAddTag}
-                        className="bg-blue-600 text-white px-3 py-1 rounded"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              </div>
+              {focusedIndex === index && titleSuggestions.length > 0 && (
+                  <ul className="absolute bg-white border mt-1 w-full max-h-48 overflow-auto shadow rounded z-10">
+                    {titleSuggestions.map((book) => (
+                        <li
+                            key={book.ISBN13}
+                            onClick={() => {
+                              const updated = [...bookInputs];
+                              updated[index] = { value: book.ISBN13, type: 'ISBN13' };
+                              setBookInputs(updated);
+                              setTitleSuggestions([]);
+                              setFocusedIndex(null);
+                            }}
+                            className="p-2 hover:bg-blue-100 cursor-pointer"
+                        >📚 {book.Title}</li>
+                    ))}
+                  </ul>
+              )}
+            </div>
+        ))}
 
-              <button onClick={saveChanges} className="mt-4 bg-green-600 text-white px-4 py-2 rounded">
-                Save Book Changes
-              </button>
+        <ScannerDialog
+            open={scannerOpen}
+            onClose={() => setScannerOpen(false)}
+            onScan={(text) => {
+              setBookInputs(prev => {
+                const updated = [...prev];
+                updated[targetIndex] = { ...updated[targetIndex], value: text };
+                return updated;
+              });
+            }}
+        />
 
-              {/* Copies Section */}
-              <div className="mt-6">
-                <h2 className="text-lg font-semibold mb-2">Copies</h2>
-                {copies.map((copy, idx) => (
-                    <div key={copy.CopyID} className="border rounded p-2 mb-2">
-                      <div className="flex flex-col gap-2">
+        <button onClick={handleReview} className="w-full mt-2 bg-purple-600 text-white py-2 rounded">
+          Review Books
+        </button>
+        <button
+            onClick={() => {
+              setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
+              setMessage('');
+            }}
+            className="w-full mt-2 bg-gray-300 text-black py-2 rounded"
+        >🔄 Reset Book Entries</button>
+
+        {confirming && (
+            <div className="mt-4">
+              <h3 className="text-lg font-semibold text-gray-700">Confirm Issue:</h3>
+              {books.map((b, i) =>
+                  b.error ? (
+                      <p key={i} className="text-red-600 text-sm">❌ {b.error}</p>
+                  ) : (
+                      <div key={i} className="flex items-center gap-2 py-2 border-b">
+                        {b.Thumbnail && <img src={b.Thumbnail} alt="thumb" className="w-12 h-auto rounded" />}
                         <div>
-                          <label className="block text-sm font-medium">Copy Number</label>
-                          <input className="p-1 border rounded" value={copy.CopyNumber} onChange={e => handleCopyChange(idx, 'CopyNumber', parseInt(e.target.value))} />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium">Copy Location ID</label>
-                          <input className="p-1 border rounded" value={copy.CopyLocationID || ''} onChange={e => handleCopyChange(idx, 'CopyLocationID', e.target.value)} />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium">Buy Price</label>
-                          <input className="p-1 border rounded" value={copy.BuyPrice || ''} onChange={e => handleCopyChange(idx, 'BuyPrice', parseFloat(e.target.value))} />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium">Ask Price</label>
-                          <input className="p-1 border rounded" value={copy.AskPrice || ''} onChange={e => handleCopyChange(idx, 'AskPrice', parseFloat(e.target.value))} />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium">Copy Booked</label>
-                          <input className="p-1 border rounded" value={copy.CopyBooked ? 'true' : 'false'} onChange={e => handleCopyChange(idx, 'CopyBooked', e.target.value === 'true')} />
+                          <p className="text-sm font-bold">{b.Title}</p>
+                          <p className="text-xs text-gray-600">{b.Authors}</p>
+                          <p className="text-xs text-green-600">Copy number <strong>{b.CopyNumber}</strong> will be issued</p>
                         </div>
                       </div>
-                    </div>
-                ))}
-                <button onClick={saveCopyChanges} className="mt-2 bg-blue-600 text-white px-4 py-2 rounded">
-                  Save Copy Info
-                </button>
-              </div>
-            </>
+                  )
+              )}
+              <button onClick={handleConfirm} className="w-full mt-4 bg-green-600 text-white py-2 rounded">
+                Confirm Issue
+              </button>
+              <button onClick={handleDownloadCollage} className="w-full mt-2 bg-blue-500 text-white py-2 rounded">
+                📸 Download Collage
+              </button>
+            </div>
+        )}
+
+        <div
+            id="collage-preview"
+            className="p-4 bg-white w-fit text-center"
+            style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}
+        >
+
+        <h2 className="text-base font-bold mb-2">📚 Books from Bookerfly</h2>
+          <div className="grid grid-cols-3 gap-2">
+{books.filter(b => !b.error && b.Thumbnail?.startsWith('http')).map((book, index) => (
+  <img
+    key={book.ISBN13 || index}
+    src={
+      book.Thumbnail.includes('books.google.com')
+        ? `https://corsproxy.io/?${encodeURIComponent(book.Thumbnail)}`
+        : book.Thumbnail.replace(/^http:/, 'https:')
+    }
+    loading="eager"
+    crossOrigin="anonymous"
+    alt={book.Title}
+    className="w-24 h-36 object-cover border border-gray-300 rounded"
+  />
+))}
+            
+
+
+
+          </div>
+          <p className="text-xs mt-2 text-gray-700">Delivered to: {selectedCustomer?.CustomerName}</p>
+          <p className="text-xs text-gray-500">{new Date().toLocaleDateString()}</p>
+        </div>
+
+        {message && (
+            <p className="mt-4 text-center text-sm text-blue-700 font-semibold">
+              DEBUG MESSAGE: {message || 'No message'}
+            </p>
         )}
       </div>
   );
