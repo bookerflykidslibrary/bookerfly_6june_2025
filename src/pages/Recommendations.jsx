@@ -400,8 +400,8 @@ export default function IssueBooks() {
               <button onClick={handleConfirm} className="w-full mt-4 bg-green-600 text-white py-2 rounded">
                 Confirm Issue
               </button>
-              <button onClick={handleShowCollage} className="w-full mt-2 bg-blue-500 text-white py-2 rounded">
-                📸 Show Collage
+              <button onClick={handleDownloadCollage} className="w-full mt-2 bg-blue-500 text-white py-2 rounded">
+                📸 Download Collage
               </button>
             </div>
         )}
@@ -434,25 +434,6 @@ export default function IssueBooks() {
               DEBUG MESSAGE: {message || 'No message'}
             </p>
         )}
-{showCollage && (
-  <div className="mt-6 bg-gray-100 p-4 rounded shadow">
-    <h2 className="text-base font-bold mb-2 text-center">📚 Book Thumbnails</h2>
-    <div className="grid grid-cols-3 gap-2 justify-center">
-      {books.filter(b => !b.error && b.Thumbnail?.startsWith('http')).map((book, index) => (
-        <img
-          key={book.ISBN13 || index}
-          src={book.Thumbnail.replace(/^http:/, 'https:')}
-          alt={book.Title}
-          className="w-24 h-36 object-cover border border-gray-300 rounded mx-auto"
-        />
-      ))}
-    </div>
-    <p className="text-xs mt-2 text-gray-700 text-center">
-      For: {selectedCustomer?.CustomerName}
-    </p>
-  </div>
-)}
-
       </div>
   );
 }
