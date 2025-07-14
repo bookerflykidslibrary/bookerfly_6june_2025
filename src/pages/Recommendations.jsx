@@ -400,8 +400,8 @@ export default function IssueBooks() {
               <button onClick={handleConfirm} className="w-full mt-4 bg-green-600 text-white py-2 rounded">
                 Confirm Issue
               </button>
-              <button onClick={handleDownloadCollage} className="w-full mt-2 bg-blue-500 text-white py-2 rounded">
-                📸 Download Collage
+              <button onClick={handleShowCollage}  className="w-full mt-2 bg-blue-500 text-white py-2 rounded">
+                 📸 Show Collage
               </button>
             </div>
         )}
