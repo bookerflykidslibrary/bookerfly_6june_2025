@@ -1,46 +1,42 @@
-// pages/collage-viewer.jsx
-
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
+// collage-viewer.jsx
+import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 export default function CollageViewer() {
-  const router = useRouter();
+  const [searchParams] = useSearchParams();
   const [images, setImages] = useState([]);
   const [name, setName] = useState('');
 
   useEffect(() => {
-    if (router.isReady) {
-      const params = new URLSearchParams(window.location.search);
-      const encodedImages = params.get('images');
-      const customerName = params.get('name');
-      try {
-        const decoded = JSON.parse(decodeURIComponent(encodedImages || '[]'));
-        setImages(decoded || []);
-        setName(customerName || '');
-      } catch (err) {
-        console.error('Error decoding images', err);
+    const raw = searchParams.get('images');
+    const userName = searchParams.get('name') || 'Reader';
+    try {
+      const decoded = JSON.parse(decodeURIComponent(raw));
+      if (Array.isArray(decoded)) {
+        setImages(decoded);
+        setName(userName);
       }
+    } catch (e) {
+      console.error('Invalid image list');
     }
-  }, [router.isReady]);
+  }, [searchParams]);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center p-6">
-      <h1 className="text-xl font-semibold mb-4 text-center">
-        📚 Books from Bookerfly for <span className="text-purple-600">{name}</span>
-      </h1>
-      <div className="grid grid-cols-3 gap-4">
-        {images.map((src, i) => (
+    <div className="min-h-screen bg-white text-center px-4 py-6">
+      <h1 className="text-xl font-bold mb-4">📚 Books from Bookerfly</h1>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 justify-center">
+        {images.map((url, index) => (
           <img
-            key={i}
-            src={src.startsWith('http:') ? src.replace('http:', 'https:') : src}
-            alt={`Book ${i + 1}`}
-            className="w-28 h-40 object-cover border rounded shadow"
+            key={index}
+            src={url.replace(/^http:/, 'https:')}
+            alt={`Book ${index + 1}`}
+            className="w-32 h-48 object-cover border border-gray-300 rounded shadow"
           />
         ))}
       </div>
-      <p className="text-sm text-gray-600 mt-6">
-        Screenshot this page or share it with the customer
-      </p>
+      <p className="text-sm text-gray-600 mt-4">Delivered to: <strong>{name}</strong></p>
+      <p className="text-xs text-gray-500">{new Date().toLocaleDateString()}</p>
+      <p className="text-xs text-gray-400 mt-2">(Take a screenshot and share 💡)</p>
     </div>
   );
 }
