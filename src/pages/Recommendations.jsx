@@ -1,146 +1,227 @@
+// ✅ AdminSignUpRequests.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
+import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
 
-const PAGE_SIZE = 2000;
+export default function AdminSignUpRequests() {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expiringSoon, setExpiringSoon] = useState([]);
+  const [expiredMembers, setExpiredMembers] = useState([]);
+  const [missedDeliveries, setMissedDeliveries] = useState([]);
 
-export default function Catalog({ user }) {
-  const [books, setBooks] = useState([]);
-  const [futureRequests, setFutureRequests] = useState([]);
-  const [quota, setQuota] = useState(0);
+  const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
 
-  useEffect(() => {
-    const fetchCatalog = async () => {
-      // 1. Fetch full catalog
-      const { data: catalogData, error: catalogError } = await supabase
-        .from('catalog')
-        .select('*')
-        .limit(PAGE_SIZE);
+  const fetchRequests = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('SignUpRequests')
+      .select('*')
+      .neq('status', 'APPROVED')
+      .order('created_at', { ascending: false });
 
-      if (catalogError) {
-        console.error('Error fetching catalog:', catalogError);
-        return;
-      }
+    if (error) {
+      console.error('Fetch error:', error.message);
+      setError(error);
+    } else {
+      setRequests(data);
+    }
+    setLoading(false);
+  };
 
-      // 2. Get all ISBNs already requested by any user
-      const { data: allFutureRequests, error: futureError } = await supabase
-        .from('circulationfuture')
-        .select('ISBN13');
-
-      if (futureError) {
-        console.error('Error fetching circulationfuture:', futureError);
-        return;
-      }
-
-      const allRequestedISBNs = new Set(allFutureRequests.map(r => r.ISBN13));
-
-      // 3. Get ISBNs already read by current user
-      const { data: history, error: historyError } = await supabase
-        .from('circulationhistory')
-        .select('ISBN13')
-        .eq('userid', user.id);
-
-      const readISBNs = new Set(history?.map(r => r.ISBN13) ?? []);
-
-      // 4. Filter out books requested by anyone or read by this user
-      const filtered = catalogData.filter(
-        (book) => !readISBNs.has(book.ISBN13) && !allRequestedISBNs.has(book.ISBN13)
-      );
-
-      setBooks(filtered);
-    };
-
-    fetchCatalog();
-  }, [user.id]);
-
-  useEffect(() => {
-    const fetchQuotaAndRequests = async () => {
-      // 5. Get current user's membership plan
-      const { data: customerInfo } = await supabase
-        .from('customerinfo')
-        .select('SubscriptionPlan')
-        .eq('CustomerID', user.id)
-        .single();
-
-      // 6. Get quota from membershipplans
-      const { data: planInfo } = await supabase
-        .from('membershipplans')
-        .select('NumberOfBooks')
-        .eq('PlanName', customerInfo.SubscriptionPlan)
-        .single();
-
-      setQuota(planInfo?.NumberOfBooks ?? 0);
-
-      // 7. Get all current user's future requests
-      const { data: userRequests } = await supabase
-        .from('circulationfuture')
-        .select('ISBN13')
-        .eq('userid', user.id);
-
-      setFutureRequests(userRequests.map(r => r.ISBN13));
-    };
-
-    fetchQuotaAndRequests();
-  }, [user.id]);
-
-  const handleBookRequest = async (isbn) => {
-    const alreadyRequested = futureRequests.includes(isbn);
-    const limit = quota + 2;
-
-    if (alreadyRequested || futureRequests.length >= limit) return;
-
-    // Get the next SerialNumberOfIssue
-    const { data: previousRequests } = await supabase
-      .from('circulationfuture')
-      .select('SerialNumberOfIssue')
-      .eq('userid', user.id)
-      .eq('ISBN13', isbn);
-
-    const nextSerial = (previousRequests?.[0]?.SerialNumberOfIssue || 0) + 1;
-
-    const { error } = await supabase.from('circulationfuture').insert([
-      {
-        userid: user.id,
-        ISBN13: isbn,
-        SerialNumberOfIssue: nextSerial,
-      },
-    ]);
-
-    if (!error) {
-      setFutureRequests([...futureRequests, isbn]);
+  const fetchMissedDeliveries = async () => {
+    const { data, error } = await supabase.rpc('get_missed_deliveries_30_days');
+    if (error) {
+      console.error('Failed to fetch missed deliveries:', error.message);
+    } else {
+      // Filter out inactive customers
+      setMissedDeliveries((data || []).filter((m) => m.isactive !== false));
     }
   };
 
-  return (
-    <div className="p-4 max-w-screen-md mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Bookerfly Kids Library - Book Catalog</h1>
-      <p className="mb-4">You can request up to {quota + 2} books. You've requested {futureRequests.length}.</p>
+  const updateStatus = async (id, newStatus) => {
+    const { error } = await supabase
+      .from('SignUpRequests')
+      .update({ status: newStatus })
+      .eq('id', id);
 
-      {books.length === 0 ? (
-        <p>No books available for request.</p>
+    if (error) {
+      alert(`Status update failed: ${error.message}`);
+    } else {
+      fetchRequests();
+    }
+  };
+
+  const fetchMembershipInfo = async () => {
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+
+    const { data: soonExpiring } = await supabase
+      .from('customerinfo')
+      .select('CustomerName, EmailID, ContactNo, EndDate')
+      .eq('IsActive', true)
+      .gte('EndDate', today.toISOString())
+      .lte('EndDate', nextWeek.toISOString())
+      .order('EndDate');
+
+    const { data: alreadyExpired } = await supabase
+      .from('customerinfo')
+      .select('CustomerName, EmailID, ContactNo, EndDate')
+      .eq('IsActive', true)
+      .lt('EndDate', today.toISOString())
+      .order('EndDate');
+
+    setExpiringSoon(soonExpiring || []);
+    setExpiredMembers(alreadyExpired || []);
+  };
+
+  const handleRecommendRest = async (delivery) => {
+    try {
+      const remaining = delivery.quota - delivery.selectedCount;
+      if (remaining <= 0) return;
+
+      const { error } = await supabase.rpc('recommend_books_for_user', {
+        user_id: delivery.userid,
+        num_books: remaining,
+        min_age: delivery.childAge,
+        max_age: delivery.childAge,
+      });
+
+      if (error) {
+        alert(`Failed to recommend books: ${error.message}`);
+      } else {
+        alert('Recommended books successfully!');
+        refreshUpcoming();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Unexpected error.');
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests();
+    fetchMembershipInfo();
+    fetchMissedDeliveries();
+  }, []);
+
+  const activeDeliveries = upcomingDeliveries.filter((d) => d.isactive !== false);
+
+  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
+  if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
+      <div className="overflow-x-auto mb-8">
+        <table className="min-w-full border border-gray-300 text-sm">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="border p-2">Name</th>
+              <th className="border p-2">Email</th>
+              <th className="border p-2">Phone</th>
+              <th className="border p-2">Child 1</th>
+              <th className="border p-2">DOB 1</th>
+              <th className="border p-2">Child 2</th>
+              <th className="border p-2">DOB 2</th>
+              <th className="border p-2">Address</th>
+              <th className="border p-2">Message</th>
+              <th className="border p-2">Status</th>
+              <th className="border p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((r) => (
+              <tr key={r.id}>
+                <td className="border p-2">{r.name}</td>
+                <td className="border p-2">{r.email}</td>
+                <td className="border p-2">{r.phone}</td>
+                <td className="border p-2">{r.child1_name}</td>
+                <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
+                <td className="border p-2">{r.child2_name}</td>
+                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
+                <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
+                <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
+                <td className="border p-2 text-center">{r.status}</td>
+                <td className="border p-2 space-x-2">
+                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
+                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
+      <ul className="list-disc list-inside text-sm mb-6">
+        {expiringSoon.length === 0 ? (
+          <li>No expiring memberships.</li>
+        ) : (
+          expiringSoon.map((m, idx) => (
+            <li key={idx}>
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
+            </li>
+          ))
+        )}
+      </ul>
+
+      <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
+      <ul className="list-disc list-inside text-sm mb-6">
+        {expiredMembers.length === 0 ? (
+          <li>No expired memberships.</li>
+        ) : (
+          expiredMembers.map((m, idx) => (
+            <li key={idx}>
+              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
+            </li>
+          ))
+        )}
+      </ul>
+
+      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
+      {loadingDeliveries ? (
+        <p className="text-sm">Loading upcoming deliveries...</p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {books.map(book => (
-            <div key={book.ISBN13} className="border p-3 rounded-lg shadow bg-white">
-              <img src={book.Thumbnail} alt={book.Title} className="w-full h-40 object-contain mb-2" />
-              <div className="text-sm font-medium">{book.Title}</div>
-              <div className="text-xs text-gray-600 mb-2">{book.Authors}</div>
-              <button
-                className={`w-full px-2 py-1 text-xs rounded ${
-                  futureRequests.includes(book.ISBN13)
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-blue-500 text-white hover:bg-blue-600'
-                }`}
-                onClick={() => handleBookRequest(book.ISBN13)}
-                disabled={futureRequests.includes(book.ISBN13) || futureRequests.length >= quota + 2}
-              >
-                {futureRequests.includes(book.ISBN13)
-                  ? 'Added to your future requests :-)'
-                  : 'Book for me'}
-              </button>
-            </div>
-          ))}
-        </div>
+        <ul className="list-disc list-inside text-sm">
+          {activeDeliveries.length === 0 ? (
+            <li>No deliveries scheduled in next 7 days.</li>
+          ) : (
+            activeDeliveries.map((d, idx) => (
+              <li key={idx}>
+                <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
+                Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
+                Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
+                {d.selectedCount < d.quota && (
+                  <button
+                    className="mt-1 ml-2 text-sm bg-blue-500 text-white px-2 py-1 rounded"
+                    onClick={() => handleRecommendRest(d)}
+                  >
+                    📚 Recommend Rest
+                  </button>
+                )}
+              </li>
+            ))
+          )}
+        </ul>
       )}
+
+      <h2 className="text-xl font-bold mb-2 text-red-600">⚠️ Missed Deliveries in Last 30 Days</h2>
+      <ul className="list-disc list-inside text-sm mb-6">
+        {missedDeliveries.length === 0 ? (
+          <li>No missed deliveries found in the last 30 days.</li>
+        ) : (
+          missedDeliveries.map((m, idx) => (
+            <li key={idx} className="mb-2">
+              <strong>{m.customername}</strong> — {m.emailid} — {m.contactno}<br />
+              Plan: {m.plan}, Quota: {m.quota}<br />
+              Expected delivery on <strong>{new Date(m.next_expected_date).toLocaleDateString()}</strong>
+            </li>
+          ))
+        )}
+      </ul>
     </div>
   );
 }
