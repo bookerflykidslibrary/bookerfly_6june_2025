@@ -1,4 +1,3 @@
-// Catalog.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { FaExternalLinkAlt } from 'react-icons/fa';
@@ -10,51 +9,24 @@ export default function Catalog({ user }) {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({});
   const [addedRequests, setAddedRequests] = useState({});
-  const [requestedCount, setRequestedCount] = useState(0);
 
   useEffect(() => {
     fetchBooks();
-  }, []);
+  }, [page]);
 
   const fetchBooks = async () => {
-    const { data, error } = await supabase.from('catalog').select('*');
+    const start = (page - 1) * PAGE_SIZE;
+    const end = start + PAGE_SIZE - 1;
+
+    const { data, error } = await supabase
+      .from('catalog')
+      .select('*')
+      .range(start, end);
+
     if (error) {
-      console.error('Error fetching catalog:', error);
+      console.error('Error fetching books:', error);
     } else {
-      console.log('Catalog data fetched:', data);
       setBooks(data);
-    }
-
-    if (user?.email) {
-      const { data: customer, error: customerError } = await supabase
-        .from('customerinfo')
-        .select('userid')
-        .eq('EmailID', user.email)
-        .single();
-
-      if (!customerError && customer?.userid) {
-        const { data: futureBooks, error: futureError } = await supabase
-          .from('circulationfuture')
-          .select('ISBN13')
-          .eq('userid', customer.userid);
-
-        const { data: historyBooks, error: historyError } = await supabase
-          .from('circulationhistory')
-          .select('ISBN13')
-          .eq('MemberID', customer.userid);
-
-        if (!futureError && !historyError) {
-          const futureISBNs = futureBooks.map(b => b.ISBN13);
-          const historyISBNs = historyBooks.map(b => b.ISBN13);
-          const added = {};
-          futureISBNs.forEach(isbn => (added[isbn] = true));
-          historyISBNs.forEach(isbn => (added[isbn] = true));
-          setAddedRequests(added);
-          setRequestedCount(futureISBNs.length);
-          console.log('Future requests:', futureISBNs);
-          console.log('Previously read:', historyISBNs);
-        }
-      }
     }
   };
 
@@ -64,57 +36,56 @@ export default function Catalog({ user }) {
       return;
     }
 
+    // Step 1: Get user ID and subscription plan
     const { data: customer, error: customerError } = await supabase
       .from('customerinfo')
-      .select('userid, planid')
+      .select('userid, SubscriptionPlan')
       .eq('EmailID', user.email)
       .single();
 
     if (customerError || !customer) {
-      console.error('Error fetching customer info:', customerError);
       alert('User not found in customerinfo.');
       return;
     }
 
     const userID = customer.userid;
-    const planID = customer.planid;
+    const planName = customer.SubscriptionPlan;
 
-    console.log('User ID:', userID, 'Plan ID:', planID);
-
+    // Step 2: Get number of books allowed in the plan
     const { data: plan, error: planError } = await supabase
       .from('membershipplans')
       .select('NumberOfBooks')
-      .eq('planid', planID)
+      .eq('PlanName', planName)
       .single();
 
     if (planError || !plan) {
-      console.error('Error fetching membership plan:', planError);
-      alert('Could not retrieve plan limits.');
+      alert('Subscription plan not found.');
       return;
     }
 
-    const maxBooks = plan.NumberOfBooks;
-    console.log('Plan allows max books:', maxBooks);
+    const planLimit = plan.NumberOfBooks;
 
-    const { data: currentRequests, error: requestCountError } = await supabase
+    // Step 3: Count current future requests
+    const { data: currentRequests, error: countError } = await supabase
       .from('circulationfuture')
-      .select('id')
+      .select('ISBN13', { count: 'exact', head: false })
       .eq('userid', userID);
 
-    if (requestCountError) {
-      console.error('Error counting requests:', requestCountError);
-      alert('Failed to verify current requests.');
+    const totalRequests = currentRequests?.length ?? 0;
+
+    if (countError) {
+      alert('Failed to check existing book requests.');
       return;
     }
 
-    const currentCount = currentRequests.length;
-    console.log(`User has ${currentCount} active requests.`);
+    const allowedLimit = planLimit + 2;
 
-    if (currentCount >= maxBooks) {
-      alert(`You've reached your plan limit of ${maxBooks} requested books.`);
+    if (totalRequests >= allowedLimit) {
+      alert(`You have reached your request limit of ${allowedLimit} books.`);
       return;
     }
 
+    // Step 4: Get next SerialNumberOfIssue for this ISBN
     const { data: existingRequests, error: serialFetchError } = await supabase
       .from('circulationfuture')
       .select('SerialNumberOfIssue')
@@ -124,13 +95,13 @@ export default function Catalog({ user }) {
       .limit(1);
 
     if (serialFetchError) {
-      console.error('Error checking existing serial:', serialFetchError);
-      alert('Could not check existing requests.');
+      alert('Could not check existing requests for this book.');
       return;
     }
 
     const nextSerial = (existingRequests?.[0]?.SerialNumberOfIssue ?? 0) + 1;
 
+    // Step 5: Insert request
     const { error: insertError } = await supabase
       .from('circulationfuture')
       .insert({
@@ -141,47 +112,55 @@ export default function Catalog({ user }) {
       });
 
     if (insertError) {
-      console.error('Insert error:', insertError);
-      alert('Failed to add request.');
+      alert('Failed to add book to your requests.');
       return;
     }
 
-    console.log(`Book ${book.Title} requested successfully!`);
     setAddedRequests(prev => ({ ...prev, [book.ISBN13]: true }));
-    setRequestedCount(prev => prev + 1);
   };
-
-  const start = (page - 1) * PAGE_SIZE;
-  const end = start + PAGE_SIZE;
-  const visibleBooks = books.slice(start, end);
 
   return (
     <div className="p-4">
-      <h1 className="text-xl font-bold mb-2">Bookerfly Kids Library - Book Catalog</h1>
-      <p className="mb-4">Books requested so far: {requestedCount}</p>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {visibleBooks.map(book => (
-          <div key={book.ISBN13} className="border rounded p-2 shadow">
+      <h1 className="text-2xl font-bold mb-4">Bookerfly Kids Library - Book Catalog</h1>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {books.map((book) => (
+          <div key={book.ISBN13} className="border p-2 rounded shadow">
             <img src={book.Thumbnail} alt={book.Title} className="w-full h-40 object-cover mb-2" />
-            <h2 className="font-semibold text-sm mb-1">{book.Title}</h2>
-            <p className="text-xs text-gray-600 mb-1">{book.Authors}</p>
+            <h2 className="text-sm font-semibold">{book.Title}</h2>
+            <p className="text-xs text-gray-600">{book.Authors}</p>
             <button
-              className={`mt-2 text-xs px-2 py-1 rounded ${addedRequests[book.ISBN13] ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-500 text-white'}`}
               onClick={() => handleBookRequest(book)}
-              disabled={addedRequests[book.ISBN13]}
+              disabled={!!addedRequests[book.ISBN13]}
+              className="mt-2 text-xs bg-blue-500 text-white px-2 py-1 rounded disabled:opacity-50"
             >
-              {addedRequests[book.ISBN13] ? 'Requested / Read' : 'Book for me'}
+              {addedRequests[book.ISBN13] ? 'Added to your future requests :-)' : 'Book for me'}
             </button>
             <a
-              href={`https://www.google.com/search?q=${encodeURIComponent(book.Title + ' book')}`}
+              href={`https://www.google.com/search?q=${book.Title} book`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 text-xs flex items-center gap-1 mt-1"
+              className="text-blue-600 text-xs flex items-center mt-1"
             >
-              Google it <FaExternalLinkAlt className="inline-block" />
+              More Info <FaExternalLinkAlt className="ml-1" />
             </a>
           </div>
         ))}
+      </div>
+      <div className="mt-4 flex justify-between">
+        <button
+          onClick={() => setPage(page - 1)}
+          disabled={page === 1}
+          className="px-4 py-2 bg-gray-300 rounded"
+        >
+          Prev
+        </button>
+        <span className="px-4 py-2">Page {page}</span>
+        <button
+          onClick={() => setPage(page + 1)}
+          className="px-4 py-2 bg-gray-300 rounded"
+        >
+          Next
+        </button>
       </div>
     </div>
   );
