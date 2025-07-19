@@ -216,8 +216,6 @@ export default function Catalog({ user }) {
         </div>
       </div>
 
-      {hiddenRead?.length > 0 && <p className="text-sm text-red-600 font-medium mb-4">Hidden books already read previously by you.</p>}
-
       {loading ? <p>Loading...</p> : books.length === 0 ? (
         <div className="flex flex-col items-center mt-12 animate-fade-in">
           <div className="text-6xl mb-4">📚❓</div>
