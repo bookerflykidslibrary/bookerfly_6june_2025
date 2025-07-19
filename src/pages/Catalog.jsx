@@ -185,10 +185,25 @@ export default function Catalog({ user }) {
     }
 
     const readSet = new Set((hiddenRead || []).map(id => id?.trim().toLowerCase()));
+
+    const { data: allFutureRequests } = await supabase
+        .from('circulationfuture')
+        .select('ISBN13');
+
+    const globallyRequestedISBNs = new Set(
+        (allFutureRequests || []).map(r => r.ISBN13?.trim().toLowerCase())
+    );
+
     const filteredBooks = catalogBooks.filter(book => {
       const isbn = book.ISBN13?.trim().toLowerCase();
-      return isbn && availabilityMap[book.ISBN13] && !readSet.has(isbn);
+      return (
+          isbn &&
+          availabilityMap[book.ISBN13] &&
+          !readSet.has(isbn) &&
+          !globallyRequestedISBNs.has(isbn)
+      );
     });
+
 
     filteredBooks.forEach(book => book.minPrice = priceMap[book.ISBN13] ?? null);
     const randomized = filteredBooks.sort(() => 0.5 - Math.random());
