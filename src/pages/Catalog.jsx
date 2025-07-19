@@ -15,17 +15,23 @@ export default function Catalog({ user }) {
   const [addedRequests, setAddedRequests] = useState({});
 
   useEffect(() => {
-    if (user?.email) {
-      fetchReadBooks(user.email);
-    } else {
-      setHiddenRead([]);
-    }
-  }, [user]);
+    if (!user?.email) return;
+
+    // Only fetch once
+    let cancelled = false;
+    fetchReadBooks(user.email).then(() => {
+      if (!cancelled) console.log('Read books fetched');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.email]);
 
   useEffect(() => {
-    if (hiddenRead !== null) {
-      loadBooks();
-    }
+    if (hiddenRead === null) return;
+
+    loadBooks();
   }, [page, appliedFilters, hiddenRead]);
 
   const fetchReadBooks = async (email) => {
