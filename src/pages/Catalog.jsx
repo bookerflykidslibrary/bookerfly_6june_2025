@@ -15,18 +15,22 @@ export default function Catalog({ user }) {
   const [addedRequests, setAddedRequests] = useState({});
 
   useEffect(() => {
-    if (!user?.email) return;
-
-    // Only fetch once
     let cancelled = false;
-    fetchReadBooks(user.email).then(() => {
-      if (!cancelled) console.log('Read books fetched');
-    });
+
+    if (user?.email) {
+      fetchReadBooks(user.email).then(() => {
+        if (!cancelled) console.log('Read books fetched');
+      });
+    } else {
+      // User not logged in → no read books
+      setHiddenRead([]);
+    }
 
     return () => {
       cancelled = true;
     };
   }, [user?.email]);
+
 
   useEffect(() => {
     if (hiddenRead === null) return;
@@ -35,11 +39,16 @@ export default function Catalog({ user }) {
   }, [page, appliedFilters, hiddenRead]);
 
   const fetchReadBooks = async (email) => {
+    if (!email) {
+      setHiddenRead([]);
+      return;
+    }
+
     const { data: customer, error } = await supabase
-      .from('customerinfo')
-      .select('userid')
-      .eq('EmailID', email)
-      .single();
+        .from('customerinfo')
+        .select('userid')
+        .eq('EmailID', email)
+        .single();
 
     if (error || !customer) {
       setHiddenRead([]);
@@ -47,17 +56,18 @@ export default function Catalog({ user }) {
     }
 
     const { data: readHistory } = await supabase
-      .from('circulationhistory')
-      .select('ISBN13')
-      .eq('userid', customer.userid);
+        .from('circulationhistory')
+        .select('ISBN13')
+        .eq('userid', customer.userid);
 
     const readISBNs = (readHistory || [])
-      .map(b => b.ISBN13?.trim().toLowerCase())
-      .filter(Boolean);
+        .map(b => b.ISBN13?.trim().toLowerCase())
+        .filter(Boolean);
 
     console.log('Books read by user:', readISBNs);
     setHiddenRead(readISBNs);
   };
+
 
   const applyFilters = () => {
     setAppliedFilters(filters);
