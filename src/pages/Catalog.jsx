@@ -64,6 +64,11 @@ export default function Catalog({ user }) {
     setPage(1);
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      applyFilters();
+    }
+  };
   const handleBookRequest = async (book) => {
     if (!user?.email) {
       alert('Please log in to request a book.');
@@ -226,9 +231,9 @@ export default function Catalog({ user }) {
 
       <div className="bg-white p-4 rounded-xl shadow-md mb-6">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <input type="number" placeholder="Enter child's age" className="input" value={filters.minAge} onChange={e => handleFilterChange('minAge', e.target.value)} />
-          <input type="text" placeholder="Author" className="input" value={filters.author} onChange={e => handleFilterChange('author', e.target.value)} />
-          <input type="text" placeholder="Title" className="input" value={filters.title} onChange={e => handleFilterChange('title', e.target.value)} />
+          <input type="number" placeholder="Enter child's age" className="input" value={filters.minAge} onChange={e => handleFilterChange('minAge', e.target.value)} onKeyDown={handleKeyPress} />
+          <input type="text" placeholder="Author" className="input" value={filters.author} onChange={e => handleFilterChange('author', e.target.value)} onKeyDown={handleKeyPress}/>
+          <input type="text" placeholder="Title" className="input" value={filters.title} onChange={e => handleFilterChange('title', e.target.value)} onKeyDown={handleKeyPress}/>
         </div>
 
         <div className="mt-3 flex gap-2">
