@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { useNavigate } from 'react-router-dom';
+import { useCatalog } from '../contexts/CatalogContext';
+
 
 export default function FindBooks() {
     const [filters, setFilters] = useState({ age: '', tag: '', author: '', title: '' });
@@ -9,15 +11,14 @@ export default function FindBooks() {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
+    const { availableBooks } = useCatalog();
+
     const handleChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
     };
 
-    const handleSearch = async () => {
+    const handleSearch = () => {
         setLoading(true);
-        setResults([]);
-
-        let query = supabase.from('catalog').select('ISBN13, Title, Authors, MinAge, MaxAge, Tags, Thumbnail');
 
         const ageNum = parseFloat(filters.age);
         const hasAge = !isNaN(ageNum);
@@ -25,31 +26,17 @@ export default function FindBooks() {
         const hasAuthor = filters.author.trim() !== '';
         const hasTitle = filters.title.trim() !== '';
 
-        if (hasAge) {
-            query = query.gte('MaxAge', ageNum).lte('MinAge', ageNum); // Correct age filtering
-        }
+        const filtered = availableBooks.filter(book => {
+            const matchesAge = hasAge ? ageNum >= book.MinAge && ageNum <= book.MaxAge : true;
+            const matchesTag = hasTag ? (book.Tags || '').toLowerCase().includes(filters.tag.toLowerCase()) : true;
+            const matchesAuthor = hasAuthor ? (book.Authors || '').toLowerCase().includes(filters.author.toLowerCase()) : true;
+            const matchesTitle = hasTitle ? (book.Title || '').toLowerCase().includes(filters.title.toLowerCase()) : true;
 
-        if (hasTag) {
-            query = query.ilike('tags', `%${filters.tag.toLowerCase()}%`);
-        }
+            return matchesAge && matchesTag && matchesAuthor && matchesTitle;
+        });
 
-        if (hasAuthor) {
-            query = query.ilike('author', `%${filters.author}%`);
-        }
-
-        if (hasTitle) {
-            query = query.ilike('title', `%${filters.title}%`);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-            console.error('Search error:', error);
-        } else {
-            const shuffled = data.sort(() => 0.5 - Math.random());
-            setResults(shuffled);
-        }
-
+        const shuffled = filtered.sort(() => 0.5 - Math.random());
+        setResults(shuffled);
         setLoading(false);
     };
 
@@ -136,7 +123,7 @@ export default function FindBooks() {
                             onClick={() => toggleSelection(book)}
                         >
                             <h2 className="text-lg font-semibold">{book.title}</h2>
-                            {book.Thumbnail && <img src={book.Thumbnail} alt={book.Title} className="w-24 h-auto mb-2" />}
+                            {book.Thumbnail && <img src={book.Thumbnail} alt={book.Title} className="w-36 h-56 object-cover rounded-lg shadow-md" />}
                             <p><strong>Author:</strong> {book.Authors}</p>
                             <p><strong>Age Group:</strong> {book.MinAge} - {book.MaxAge}</p>
                             <p><strong>Tags:</strong> {Array.isArray(book.Tags) ? book.Tags.join(', ') : book.Tags}</p>

@@ -21,7 +21,8 @@ import CirculationSummary from './pages/CirculationSummary';
 import EditBook from './pages/admin/EditBook';
 import HomePage from './pages/HomePage';
 import FindBooks from './pages/FindBooks';
-import Collage from './pages/Collage'; // adjust path if needed
+import { CatalogProvider } from './contexts/CatalogContext';
+import Collage from './pages/Collage';
 
 
 
@@ -115,8 +116,11 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <Router>
-      <AppRoutes />
-    </Router>
+      <Router>
+        <CatalogProvider>
+          <AppRoutes />
+        </CatalogProvider>
+      </Router>
   );
 }
+

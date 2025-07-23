@@ -21,7 +21,7 @@ const Collage = () => {
                                 <img
                                     src={book.Thumbnail}
                                     alt={book.Title}
-                                    className="w-24 h-auto mx-auto mb-2"
+                                    className="w-60 h-80 object-contain bg-white rounded-md shadow"
                                 />
                             )}
                             <p className="text-sm">{book.Title}</p>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { FaExternalLinkAlt } from 'react-icons/fa';
+import { useCatalog } from '../contexts/CatalogContext';
 
 const PAGE_SIZE = 2000;
 
@@ -13,6 +14,7 @@ export default function Catalog({ user }) {
   const [expandedDesc, setExpandedDesc] = useState({});
   const [loading, setLoading] = useState(true);
   const [addedRequests, setAddedRequests] = useState({});
+  const { setAvailableBooks } = useCatalog();
 
   useEffect(() => {
     let cancelled = false;
@@ -229,6 +231,7 @@ export default function Catalog({ user }) {
     filteredBooks.forEach(book => book.minPrice = priceMap[book.ISBN13] ?? null);
     const randomized = filteredBooks.sort(() => 0.5 - Math.random());
     setBooks(randomized.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
+    setAvailableBooks(filteredBooks); // ✅ update the context
     setLoading(false);
   };
 
