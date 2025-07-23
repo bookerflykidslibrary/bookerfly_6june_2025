@@ -1,0 +1,148 @@
+import { useState } from 'react';
+import supabase from '../utils/supabaseClient';
+import { useNavigate } from 'react-router-dom';
+
+export default function FindBooks() {
+    const [filters, setFilters] = useState({ age: '', tag: '', author: '', title: '' });
+    const [results, setResults] = useState([]);
+    const [selectedBooks, setSelectedBooks] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const navigate = useNavigate();
+
+    const handleChange = (e) => {
+        setFilters({ ...filters, [e.target.name]: e.target.value });
+    };
+
+    const handleSearch = async () => {
+        setLoading(true);
+        setResults([]);
+
+        let query = supabase.from('catalog').select(' Title, Authors, MinAge, MaxAge, Tags, Thumbnail');
+
+        const ageNum = parseFloat(filters.age);
+        const hasAge = !isNaN(ageNum);
+        const hasTag = filters.tag.trim() !== '';
+        const hasAuthor = filters.author.trim() !== '';
+        const hasTitle = filters.title.trim() !== '';
+
+        if (hasAge) {
+            query = query.gte('MaxAge', ageNum).lte('MinAge', ageNum); // Correct age filtering
+        }
+
+        if (hasTag) {
+            query = query.ilike('tags', `%${filters.tag.toLowerCase()}%`);
+        }
+
+        if (hasAuthor) {
+            query = query.ilike('author', `%${filters.author}%`);
+        }
+
+        if (hasTitle) {
+            query = query.ilike('title', `%${filters.title}%`);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+            console.error('Search error:', error);
+        } else {
+            const shuffled = data.sort(() => 0.5 - Math.random());
+            setResults(shuffled);
+        }
+
+        setLoading(false);
+    };
+
+    const toggleSelection = (book) => {
+        setSelectedBooks((prev) => {
+            const exists = prev.find((b) => b.id === book.id);
+            if (exists) {
+                return prev.filter((b) => b.id !== book.id);
+            } else {
+                return [...prev, book];
+            }
+        });
+    };
+
+    const handleShowCollage = () => {
+        const selectedIds = selectedBooks.map((book) => book.id);
+        navigate(`/collage?ids=${selectedIds.join(',')}`);
+    };
+
+    return (
+        <div className="p-6 max-w-4xl mx-auto">
+            <h1 className="text-2xl font-bold mb-4">Find Books</h1>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+                <input
+                    name="age"
+                    value={filters.age}
+                    onChange={handleChange}
+                    placeholder="Enter Age (e.g., 4.5)"
+                    className="p-2 border rounded"
+                />
+                <input
+                    name="tag"
+                    value={filters.tag}
+                    onChange={handleChange}
+                    placeholder="Tag (e.g., mystery, animals)"
+                    className="p-2 border rounded"
+                />
+                <input
+                    name="author"
+                    value={filters.author}
+                    onChange={handleChange}
+                    placeholder="Author"
+                    className="p-2 border rounded"
+                />
+                <input
+                    name="title"
+                    value={filters.title}
+                    onChange={handleChange}
+                    placeholder="Title"
+                    className="p-2 border rounded"
+                />
+            </div>
+
+            <button
+                onClick={handleSearch}
+                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            >
+                Search
+            </button>
+
+            {selectedBooks.length > 0 && (
+                <button
+                    onClick={handleShowCollage}
+                    className="ml-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                >
+                    Show Collage of Selected Books
+                </button>
+            )}
+
+            {loading && <p className="mt-4 text-gray-600">Searching...</p>}
+
+            <div className="mt-6 grid gap-4">
+                {results.length === 0 && !loading ? (
+                    <p>No books found.</p>
+                ) : (
+                    results.map((book, index) => (
+                        <div
+                            key={index}
+                            className={`border p-4 rounded shadow cursor-pointer ${
+                                selectedBooks.some((b) => b.id === book.id) ? 'bg-yellow-100 border-yellow-400' : ''
+                            }`}
+                            onClick={() => toggleSelection(book)}
+                        >
+                            <h2 className="text-lg font-semibold">{book.title}</h2>
+                            {book.Thumbnail && <img src={book.Thumbnail} alt={book.Title} className="w-24 h-auto mb-2" />}
+                            <p><strong>Author:</strong> {book.Authors}</p>
+                            <p><strong>Age Group:</strong> {book.MinAge} - {book.MaxAge}</p>
+                            <p><strong>Tags:</strong> {Array.isArray(book.Tags) ? book.Tags.join(', ') : book.Tags}</p>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+}

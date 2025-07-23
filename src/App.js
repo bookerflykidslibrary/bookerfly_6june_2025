@@ -20,6 +20,8 @@ import ChangePassword from './pages/ChangePassword';
 import CirculationSummary from './pages/CirculationSummary';
 import EditBook from './pages/admin/EditBook';
 import HomePage from './pages/HomePage';
+import FindBooks from './pages/FindBooks';
+
 
 <Routes>
   {/* ...other routes */}
@@ -92,6 +94,17 @@ function AppRoutes() {
 
         <Route path="/admin/view-signup-requests" element={user?.email === 'vkansal12@gmail.com'? <AdminSignUpRequests /> : <div className="p-4">Access denied</div>}
 />
+        <Route
+            path="/admin/find-books"
+            element={
+              user?.email === 'vkansal12@gmail.com' ? (
+                  <FindBooks />
+              ) : (
+                  <div className="p-4">Access denied</div>
+              )
+            }
+        />
+
       </Routes>
     </>
   );
