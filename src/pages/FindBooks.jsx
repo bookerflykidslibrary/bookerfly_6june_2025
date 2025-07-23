@@ -17,7 +17,7 @@ export default function FindBooks() {
         setLoading(true);
         setResults([]);
 
-        let query = supabase.from('catalog').select(' Title, Authors, MinAge, MaxAge, Tags, Thumbnail');
+        let query = supabase.from('catalog').select('ISBN13, Title, Authors, MinAge, MaxAge, Tags, Thumbnail');
 
         const ageNum = parseFloat(filters.age);
         const hasAge = !isNaN(ageNum);
@@ -55,19 +55,20 @@ export default function FindBooks() {
 
     const toggleSelection = (book) => {
         setSelectedBooks((prev) => {
-            const exists = prev.find((b) => b.id === book.id);
+            const exists = prev.find((b) => b.ISBN13 === book.ISBN13);
             if (exists) {
-                return prev.filter((b) => b.id !== book.id);
+                return prev.filter((b) => b.ISBN13 !== book.ISBN13);
             } else {
                 return [...prev, book];
             }
         });
     };
 
+
     const handleShowCollage = () => {
-        const selectedIds = selectedBooks.map((book) => book.id);
-        navigate(`/collage?ids=${selectedIds.join(',')}`);
+        navigate('/collage', { state: { selectedBooks } }); // ✅ pass the state
     };
+
 
     return (
         <div className="p-6 max-w-4xl mx-auto">
@@ -130,7 +131,7 @@ export default function FindBooks() {
                         <div
                             key={index}
                             className={`border p-4 rounded shadow cursor-pointer ${
-                                selectedBooks.some((b) => b.id === book.id) ? 'bg-yellow-100 border-yellow-400' : ''
+                                selectedBooks.some((b) => b.ISBN13 === book.ISBN13) ? 'bg-yellow-100 border-yellow-400' : ''
                             }`}
                             onClick={() => toggleSelection(book)}
                         >

@@ -21,6 +21,8 @@ import CirculationSummary from './pages/CirculationSummary';
 import EditBook from './pages/admin/EditBook';
 import HomePage from './pages/HomePage';
 import FindBooks from './pages/FindBooks';
+import Collage from './pages/Collage'; // adjust path if needed
+
 
 
 <Routes>
@@ -86,6 +88,7 @@ function AppRoutes() {
         <Route path="/admin/edit-customer" element={<AdminCustomerEditor user={user} />} />
         <Route path="/signup-request" element={<PublicSignup />} />
         <Route path="/change-password" element={<ChangePassword />} />
+        <Route path="/collage" element={<Collage />} />
         <Route
           path="/admin/review-books"
           element={<ReviewBooks adminLocation={user?.user_metadata?.location || 'Unknown'} />}
