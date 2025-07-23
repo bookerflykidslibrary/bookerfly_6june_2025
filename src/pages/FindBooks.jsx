@@ -18,6 +18,7 @@ export default function FindBooks() {
     };
 
     const handleSearch = () => {
+        console.log("Search clicked!");
         setLoading(true);
 
         const ageNum = parseFloat(filters.age);
@@ -92,21 +93,28 @@ export default function FindBooks() {
                 />
             </div>
 
-            <button
-                onClick={handleSearch}
-                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            >
-                Search
-            </button>
-
-            {selectedBooks.length > 0 && (
+            <div className="flex flex-col sm:flex-row gap-4 mt-4">
                 <button
-                    onClick={handleShowCollage}
-                    className="ml-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                    onClick={handleSearch}
+                    onTouchEnd={(e) => {
+                        e.preventDefault(); // Prevent iOS from misfiring
+                        handleSearch();
+                    }}
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full sm:w-auto"
                 >
-                    Show Collage of Selected Books
+                    Search
                 </button>
-            )}
+
+                {selectedBooks.length > 0 && (
+                    <button
+                        onClick={handleShowCollage}
+                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full sm:w-auto"
+                    >
+                        Show Collage of Selected Books
+                    </button>
+                )}
+            </div>
+
 
             {loading && <p className="mt-4 text-gray-600">Searching...</p>}
 
