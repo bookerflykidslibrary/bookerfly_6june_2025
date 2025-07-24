@@ -184,28 +184,21 @@ export default function FindBooks() {
                     results.map((book, index) => (
                         <div
                             key={index}
-                            className={`border p-4 rounded shadow cursor-pointer ${
-                                selectedBooks.some((b) => b.ISBN13 === book.ISBN13)
-                                    ? 'bg-yellow-100 border-yellow-400'
-                                    : ''
+                            className={`border p-2 rounded shadow text-sm cursor-pointer flex flex-col items-center text-center ${
+                                selectedBooks.some((b) => b.ISBN13 === book.ISBN13) ? 'bg-yellow-100 border-yellow-400' : ''
                             }`}
                             onClick={() => toggleSelection(book)}
                         >
-                            <h2 className="text-lg font-semibold">{book.Title}</h2>
-                            {book.Thumbnail ? (
+                            {book.Thumbnail && (
                                 <img
                                     src={book.Thumbnail}
                                     alt={book.Title}
-                                    className="w-36 h-56 object-cover rounded-lg shadow-md my-2"
+                                    className="w-20 h-28 object-cover rounded mb-2"
                                 />
-                            ) : (
-                                <div className="w-36 h-56 bg-gray-200 flex items-center justify-center my-2 rounded-lg">
-                                    <span className="text-gray-500 text-sm">No Image</span>
-                                </div>
                             )}
-                            <p><strong>Author:</strong> {book.Authors}</p>
-                            <p><strong>Age Group:</strong> {book.MinAge} - {book.MaxAge}</p>
-                            <p><strong>Tags:</strong> {Array.isArray(book.Tags) ? book.Tags.join(', ') : book.Tags || '—'}</p>
+                            <h2 className="font-semibold truncate w-full">{book.Title}</h2>
+                            <p className="text-gray-700 truncate w-full"><strong>Author:</strong> {book.Authors}</p>
+                            <p className="text-gray-600 text-xs"><strong>Age:</strong> {book.MinAge} - {book.MaxAge}</p>
                         </div>
                     ))
                 )}
