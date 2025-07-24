@@ -21,6 +21,7 @@ export default function Navbar({ user }) {
         { to: '/admin/view-signup-requests', label: 'Next steps' },
         { to: '/admin/return-books', label: 'Return Books' },
         { to: '/admin/circulation-summary', label: 'Circulation Summary' },
+        { to: '/admin/find-books', label: 'Find Books' },
     ];
 
     return (

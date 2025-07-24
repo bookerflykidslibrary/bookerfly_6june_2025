@@ -1,5 +1,3 @@
-// Full updated IssueBooks.jsx component with collage generation
-
 import React, { useState, useEffect } from 'react';
 import supabase from '../utils/supabaseClient';
 import ScannerDialog from '../components/ScannerDialog';
@@ -19,16 +17,17 @@ export default function IssueBooks() {
   const [targetIndex, setTargetIndex] = useState(null);
   const [titleSuggestions, setTitleSuggestions] = useState([]);
   const [focusedIndex, setFocusedIndex] = useState(null);
+  const [showCollage, setShowCollage] = useState(false);
 
   useEffect(() => {
     const checkAdmin = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data: admin } = await supabase
-          .from('admininfo')
-          .select('AdminLocation')
-          .eq('AdminID', user.id)
-          .single();
+        .from('admininfo')
+        .select('AdminLocation')
+        .eq('AdminID', user.id)
+        .single();
       if (admin) {
         setIsAdmin(true);
         setAdminLocation(admin.AdminLocation);
@@ -48,41 +47,40 @@ export default function IssueBooks() {
         `CustomerName.ilike.*${trimmed}*`,
         `EmailID.ilike.*${trimmed}*`
       ];
-      const { data, error } = await supabase
-          .from('customerinfo')
-          .select('CustomerID, CustomerName, EmailID')
-          .or(orClause.join(','))
-          .limit(10);
-      if (!error) setCustomerSuggestions(data || []);
-      else setCustomerSuggestions([]);
+      const { data } = await supabase
+        .from('customerinfo')
+        .select('CustomerID, CustomerName, EmailID')
+        .or(orClause.join(','))
+        .limit(10);
+      setCustomerSuggestions(data || []);
     };
     fetchSuggestions();
   }, [customerSearch]);
 
   const handleSelectCustomer = async (customerId) => {
     const { data: customer } = await supabase
-        .from('customerinfo')
-        .select('*')
-        .eq('CustomerID', customerId)
-        .single();
+      .from('customerinfo')
+      .select('*')
+      .eq('CustomerID', customerId)
+      .single();
 
     if (customer) {
       setSelectedCustomer(customer);
       setCustomerSearch(`${customer.CustomerName} (${customer.EmailID})`);
       setCustomerSuggestions([]);
       const { data: plan } = await supabase
-          .from('membershipplans')
-          .select('NumberOfBooks')
-          .eq('PlanName', customer.SubscriptionPlan)
-          .single();
+        .from('membershipplans')
+        .select('NumberOfBooks')
+        .eq('PlanName', customer.SubscriptionPlan)
+        .single();
 
       const bookLimit = parseInt(plan?.NumberOfBooks || '0', 10);
       const { data: wishlist } = await supabase
-          .from('circulationfuture')
-          .select('ISBN13')
-          .eq('userid', customer.userid)
-          .order('SerialNumberOfIssue')
-          .limit(bookLimit);
+        .from('circulationfuture')
+        .select('ISBN13')
+        .eq('userid', customer.userid)
+        .order('SerialNumberOfIssue')
+        .limit(bookLimit);
 
       const inputs = Array(10).fill({ value: '', type: 'ISBN13' });
       wishlist?.forEach((w, i) => {
@@ -94,11 +92,10 @@ export default function IssueBooks() {
 
   const fetchBookTitleSuggestions = async (text) => {
     const { data } = await supabase
-        .from('catalog')
-        .select('Title, ISBN13')
-        .ilike('Title', `%${text}%`)
-        .limit(20);
-
+      .from('catalog')
+      .select('Title, ISBN13')
+      .ilike('Title', `%${text}%`)
+      .limit(20);
     setTitleSuggestions(data || []);
   };
 
@@ -129,36 +126,34 @@ export default function IssueBooks() {
       const isbn = entry.value;
       if (entry.type === 'ISBN13') {
         const { data: copy } = await supabase
-            .from('copyinfo')
-            .select('CopyID, ISBN13, CopyNumber')
-            .eq('ISBN13', isbn)
-            .eq('CopyLocation', adminLocation)
-            .eq('CopyBooked', false)
-            .limit(1)
-            .maybeSingle();
-
+          .from('copyinfo')
+          .select('CopyID, ISBN13, CopyNumber')
+          .eq('ISBN13', isbn)
+          .eq('CopyLocation', adminLocation)
+          .eq('CopyBooked', false)
+          .limit(1)
+          .maybeSingle();
         if (!copy) {
           allBooks.push({ error: `No available copy for ISBN: ${isbn}` });
           continue;
         }
-
         const { data: book } = await supabase
-            .from('catalog')
-            .select('Title, Authors, ISBN13, Thumbnail')
-            .eq('ISBN13', isbn)
-            .single();
-
+          .from('catalog')
+          .select('Title, Authors, ISBN13, Thumbnail')
+          .eq('ISBN13', isbn)
+          .single();
         allBooks.push({ ...book, CopyID: copy.CopyID, CopyNumber: copy.CopyNumber });
       }
     }
     setBooks(allBooks);
     setConfirming(true);
     setMessage('');
+    setShowCollage(false);
   };
 
   const handleConfirm = async () => {
     if (!selectedCustomer?.userid) {
-      setMessage('❌ Cannot issue books — userid missing for selected customer.');
+      setMessage('❌ Cannot issue books — userid missing.');
       return;
     }
     const today = new Date().toISOString();
@@ -177,263 +172,200 @@ export default function IssueBooks() {
     const { error } = await supabase.from('circulationhistory').insert(records);
     if (!error) {
       await supabase
-          .from('copyinfo')
-          .update({ CopyBooked: true })
-          .in('CopyID', validBooks.map(b => b.CopyID));
+        .from('copyinfo')
+        .update({ CopyBooked: true })
+        .in('CopyID', validBooks.map(b => b.CopyID));
 
       const { data: wishlist } = await supabase
-          .from('circulationfuture')
-          .select('CirculationID, ISBN13')
-          .eq('userid', selectedCustomer.userid);
+        .from('circulationfuture')
+        .select('CirculationID, ISBN13')
+        .eq('userid', selectedCustomer.userid);
 
       const issuedISBNs = validBooks.map(b => b.ISBN13);
       const toDelete = wishlist.filter(w => issuedISBNs.includes(w.ISBN13));
       await supabase
-          .from('circulationfuture')
-          .delete()
-          .in('CirculationID', toDelete.map(w => w.CirculationID));
+        .from('circulationfuture')
+        .delete()
+        .in('CirculationID', toDelete.map(w => w.CirculationID));
 
       const { data: remaining } = await supabase
-          .from('circulationfuture')
-          .select('CirculationID')
-          .eq('userid', selectedCustomer.userid)
-          .order('SerialNumberOfIssue');
+        .from('circulationfuture')
+        .select('CirculationID')
+        .eq('userid', selectedCustomer.userid)
+        .order('SerialNumberOfIssue');
 
       for (let i = 0; i < remaining.length; i++) {
         await supabase
-            .from('circulationfuture')
-            .update({ SerialNumberOfIssue: i + 1 })
-            .eq('CirculationID', remaining[i].CirculationID);
+          .from('circulationfuture')
+          .update({ SerialNumberOfIssue: i + 1 })
+          .eq('CirculationID', remaining[i].CirculationID);
       }
 
-      setMessage('✅ Books issued successfully! Have fun!');
+      setMessage('✅ Books issued successfully!');
       setConfirming(false);
       setBooks([]);
       setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
+      setShowCollage(false);
     } else {
-      setMessage('Error issuing books: ' + error.message);
+      setMessage('Error: ' + error.message);
     }
   };
 
-  // Inside IssueBooks component, above handleDownloadCollage
+  const handleShowCollage = () => setShowCollage(true);
 
-  const waitForImages = (element, timeout = 5000) => {
+  const waitForImages = (element, timeout = 10000) => {
     const images = element.querySelectorAll('img');
-
-    if (images.length === 0) {
-      console.log("✅ No images to wait for.");
-      return Promise.resolve();
-    }
-
-    console.log(`⏳ Waiting for ${images.length} images to load...`);
-
+    if (images.length === 0) return Promise.resolve();
     return Promise.race([
       Promise.all(
-          Array.from(images).map((img, i) => {
-            return new Promise((resolve) => {
-              if (img.complete && img.naturalHeight !== 0) {
-                console.log(`✅ Image ${i + 1} already loaded`);
-                resolve();
-              } else {
-                img.onload = () => {
-                  console.log(`✅ Image ${i + 1} loaded`);
-                  resolve();
-                };
-                img.onerror = () => {
-                  console.warn(`❌ Image ${i + 1} failed to load: ${img.src}`);
-                  resolve(); // Resolve even if failed to prevent hang
-                };
-              }
-            });
+        Array.from(images).map(img =>
+          new Promise(resolve => {
+            if (img.complete && img.naturalHeight !== 0) resolve();
+            else {
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+            }
           })
+        )
       ),
-      new Promise((resolve) => {
-        setTimeout(() => {
-          console.warn(`⚠️ Timeout after ${timeout}ms while waiting for images.`);
-          resolve(); // Resolve anyway to not block html2canvas
-        }, timeout);
-      }),
+      new Promise(resolve => setTimeout(resolve, timeout))
     ]);
   };
 
-
-
   const handleDownloadCollage = async () => {
-    console.log('📸 Download button clicked');
     const element = document.getElementById('collage-preview');
     if (!element) return;
-
-    // ✅ Wait for all <img> elements to load
     await waitForImages(element);
-    console.log('Images loaded');
-    // ✅ Capture collage
     const canvas = await html2canvas(element, {
       backgroundColor: '#fff',
       scale: 2,
-      useCORS: true, // make sure this is present
+      useCORS: true
     });
-
     const dataUrl = canvas.toDataURL('image/png');
     const link = document.createElement('a');
     const name = selectedCustomer?.CustomerName?.replace(/\s+/g, '_') || 'books';
     link.download = `bookerfly_${name}_${Date.now()}.png`;
     link.href = dataUrl;
     link.click();
-    console.log("✅ Button clicked");
-
   };
 
-
-
   return (
-      <div className="max-w-md mx-auto p-4">
-        <input
+    <div className="max-w-2xl mx-auto p-4">
+      <input
+        type="text"
+        placeholder="Search customer"
+        value={customerSearch}
+        onChange={(e) => setCustomerSearch(e.target.value)}
+        className="w-full mb-2 p-2 border rounded"
+      />
+      {customerSuggestions.length > 0 && (
+        <ul className="border rounded bg-white shadow max-h-40 overflow-y-auto mb-2">
+          {customerSuggestions.map(c => (
+            <li
+              key={c.CustomerID}
+              onClick={() => handleSelectCustomer(c.CustomerID)}
+              className="p-2 hover:bg-blue-100 cursor-pointer"
+            >
+              {c.CustomerName}, {c.EmailID}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {bookInputs.map((entry, index) => (
+        <div key={index} className="flex mb-2 gap-2">
+          <select
+            value={entry.type}
+            onChange={(e) => handleInputChange(index, 'type', e.target.value)}
+            className="p-2 border rounded w-1/4"
+          >
+            <option value="ISBN13">ISBN13</option>
+          </select>
+          <input
             type="text"
-            placeholder="Search by Name or Email"
-            className="w-full p-2 mb-2 border border-gray-300 rounded"
-            value={customerSearch}
-            onChange={(e) => setCustomerSearch(e.target.value)}
-        />
-        {customerSuggestions.length > 0 && (
-            <ul className="bg-white border mt-1 max-h-48 overflow-auto shadow rounded z-10 relative">
-              {customerSuggestions.map((c) => (
-                  <li
-                      key={c.CustomerID}
-                      onClick={() => handleSelectCustomer(c.CustomerID)}
-                      className="p-2 hover:bg-blue-100 cursor-pointer"
-                  >
-                    #{c.CustomerID} — {c.CustomerName}, {c.EmailID}
-                  </li>
-              ))}
-            </ul>
-        )}
-
-        {bookInputs.map((entry, index) => (
-            <div key={index} className="flex flex-col mb-4 relative">
-              <div className="flex gap-2 items-center">
-                <select
-                    value={entry.type}
-                    onChange={(e) => handleInputChange(index, 'type', e.target.value)}
-                    className="p-2 border rounded w-1/3"
-                >
-                  <option value="ISBN13">ISBN13</option>
-                  <option value="CopyLocationID">CopyLocation</option>
-                </select>
-                <input
-                    type="text"
-                    placeholder={`Book ${index + 1}`}
-                    value={entry.value}
-                    onChange={(e) => handleInputChange(index, 'value', e.target.value)}
-                    onFocus={() => setFocusedIndex(index)}
-                    className="flex-1 p-2 border border-gray-300 rounded"
-                />
-                <button
-                    type="button"
-                    onClick={() => {
-                      setTargetIndex(index);
-                      setScannerOpen(true);
-                    }}
-                    className="bg-blue-600 text-white px-2 py-1 rounded"
-                >📷</button>
-              </div>
-
-              {focusedIndex === index && titleSuggestions.length > 0 && (
-                  <ul className="absolute bg-white border mt-1 w-full max-h-48 overflow-auto shadow rounded z-10">
-                    {titleSuggestions.map((book) => (
-                        <li
-                            key={book.ISBN13}
-                            onClick={() => {
-                              const updated = [...bookInputs];
-                              updated[index] = { value: book.ISBN13, type: 'ISBN13' };
-                              setBookInputs(updated);
-                              setTitleSuggestions([]);
-                              setFocusedIndex(null);
-                            }}
-                            className="p-2 hover:bg-blue-100 cursor-pointer"
-                        >📚 {book.Title}</li>
-                    ))}
-                  </ul>
-              )}
-            </div>
-        ))}
-
-        <ScannerDialog
-            open={scannerOpen}
-            onClose={() => setScannerOpen(false)}
-            onScan={(text) => {
-              setBookInputs(prev => {
-                const updated = [...prev];
-                updated[targetIndex] = { ...updated[targetIndex], value: text };
-                return updated;
-              });
-            }}
-        />
-
-        <button onClick={handleReview} className="w-full mt-2 bg-purple-600 text-white py-2 rounded">
-          Review Books
-        </button>
-        <button
+            placeholder={`Book ${index + 1}`}
+            value={entry.value}
+            onChange={(e) => handleInputChange(index, 'value', e.target.value)}
+            className="flex-1 p-2 border rounded"
+          />
+          <button
+            className="px-3 bg-blue-600 text-white rounded"
             onClick={() => {
-              setBookInputs(Array(10).fill({ value: '', type: 'ISBN13' }));
-              setMessage('');
+              setTargetIndex(index);
+              setScannerOpen(true);
             }}
-            className="w-full mt-2 bg-gray-300 text-black py-2 rounded"
-        >🔄 Reset Book Entries</button>
+          >📷</button>
+        </div>
+      ))}
 
-        {confirming && (
-            <div className="mt-4">
-              <h3 className="text-lg font-semibold text-gray-700">Confirm Issue:</h3>
-              {books.map((b, i) =>
-                  b.error ? (
-                      <p key={i} className="text-red-600 text-sm">❌ {b.error}</p>
-                  ) : (
-                      <div key={i} className="flex items-center gap-2 py-2 border-b">
-                        {b.Thumbnail && <img src={b.Thumbnail} alt="thumb" className="w-12 h-auto rounded" />}
-                        <div>
-                          <p className="text-sm font-bold">{b.Title}</p>
-                          <p className="text-xs text-gray-600">{b.Authors}</p>
-                          <p className="text-xs text-green-600">Copy number <strong>{b.CopyNumber}</strong> will be issued</p>
-                        </div>
-                      </div>
-                  )
-              )}
-              <button onClick={handleConfirm} className="w-full mt-4 bg-green-600 text-white py-2 rounded">
-                Confirm Issue
-              </button>
-              <button onClick={handleDownloadCollage} className="w-full mt-2 bg-blue-500 text-white py-2 rounded">
-                📸 Download Collage
-              </button>
-            </div>
-        )}
+      <ScannerDialog
+        open={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={(code) => {
+          setBookInputs(prev => {
+            const updated = [...prev];
+            updated[targetIndex] = { ...updated[targetIndex], value: code };
+            return updated;
+          });
+        }}
+      />
 
-        <div
-            id="collage-preview"
-            className="p-4 bg-white w-fit text-center"
-            style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}
-        >
+      <button onClick={handleReview} className="w-full mt-2 bg-purple-600 text-white py-2 rounded">
+        Review Books
+      </button>
 
-        <h2 className="text-base font-bold mb-2">📚 Books from Bookerfly</h2>
-          <div className="grid grid-cols-3 gap-2">
-            {books.filter(b => !b.error && b.Thumbnail?.startsWith('http')).map((book, index) => (
-                <img
-                    key={book.ISBN13 || index}
-                    src={book.Thumbnail.replace(/^http:/, 'https:')}
-                    //src={`http://localhost:5000/proxy?url=${encodeURIComponent(book.Thumbnail)}`}
-                    alt={book.Title}
-                    className="w-24 h-36 object-cover border border-gray-300 rounded"
-                />
+      {confirming && (
+        <div className="mt-4">
+          <h3 className="text-lg font-semibold">Confirm Issue:</h3>
+          {books.map((b, i) =>
+            b.error ? (
+              <p key={i} className="text-red-600">❌ {b.error}</p>
+            ) : (
+              <div key={i} className="flex gap-2 my-2 items-center">
+                <img src={b.Thumbnail} alt={b.Title} className="w-12 h-16 object-cover border rounded" />
+                <div>
+                  <p className="font-bold text-sm">{b.Title}</p>
+                  <p className="text-xs text-gray-600">{b.Authors}</p>
+                  <p className="text-xs text-green-600">Copy #{b.CopyNumber}</p>
+                </div>
+              </div>
+            )
+          )}
+          <button onClick={handleConfirm} className="w-full mt-4 bg-green-600 text-white py-2 rounded">
+            ✅ Confirm Issue
+          </button>
+          <button onClick={handleShowCollage} className="w-full mt-2 bg-blue-500 text-white py-2 rounded">
+            📸 Show Collage
+          </button>
+          <button onClick={handleDownloadCollage} className="w-full mt-2 bg-indigo-600 text-white py-2 rounded">
+            ⬇️ Download Collage
+          </button>
+        </div>
+      )}
+
+      {showCollage && (
+        <div id="collage-preview" className="mt-4 p-4 bg-white border rounded shadow text-center">
+          <h2 className="text-lg font-bold mb-2">📚 Books from Bookerfly</h2>
+          <div className="grid grid-cols-3 gap-2 justify-center">
+            {books.filter(b => !b.error && b.Thumbnail?.startsWith('http')).map((book, i) => (
+              <img
+                key={i}
+                src={book.Thumbnail.replace(/^http:/, 'https:')}
+                alt={book.Title}
+                className="w-24 h-36 object-cover border rounded mx-auto"
+              />
             ))}
-
           </div>
           <p className="text-xs mt-2 text-gray-700">Delivered to: {selectedCustomer?.CustomerName}</p>
           <p className="text-xs text-gray-500">{new Date().toLocaleDateString()}</p>
         </div>
+      )}
 
-        {message && (
-            <p className="mt-4 text-center text-sm text-blue-700 font-semibold">
-              DEBUG MESSAGE: {message || 'No message'}
-            </p>
-        )}
-      </div>
+      {message && (
+        <p className="mt-4 text-center text-sm text-blue-700 font-semibold">
+          DEBUG: {message}
+        </p>
+      )}
+    </div>
   );
 }

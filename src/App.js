@@ -20,6 +20,11 @@ import ChangePassword from './pages/ChangePassword';
 import CirculationSummary from './pages/CirculationSummary';
 import EditBook from './pages/admin/EditBook';
 import HomePage from './pages/HomePage';
+import FindBooks from './pages/FindBooks';
+import { CatalogProvider } from './contexts/CatalogContext';
+import Collage from './pages/Collage';
+
+
 
 <Routes>
   {/* ...other routes */}
@@ -84,6 +89,7 @@ function AppRoutes() {
         <Route path="/admin/edit-customer" element={<AdminCustomerEditor user={user} />} />
         <Route path="/signup-request" element={<PublicSignup />} />
         <Route path="/change-password" element={<ChangePassword />} />
+        <Route path="/collage" element={<Collage />} />
         <Route
           path="/admin/review-books"
           element={<ReviewBooks adminLocation={user?.user_metadata?.location || 'Unknown'} />}
@@ -92,6 +98,17 @@ function AppRoutes() {
 
         <Route path="/admin/view-signup-requests" element={user?.email === 'vkansal12@gmail.com'? <AdminSignUpRequests /> : <div className="p-4">Access denied</div>}
 />
+        <Route
+            path="/admin/find-books"
+            element={
+              user?.email === 'vkansal12@gmail.com' ? (
+                  <FindBooks />
+              ) : (
+                  <div className="p-4">Access denied</div>
+              )
+            }
+        />
+
       </Routes>
     </>
   );
@@ -99,8 +116,11 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <Router>
-      <AppRoutes />
-    </Router>
+      <Router>
+        <CatalogProvider>
+          <AppRoutes />
+        </CatalogProvider>
+      </Router>
   );
 }
+
