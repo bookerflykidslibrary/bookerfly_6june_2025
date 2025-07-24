@@ -1,227 +1,102 @@
-// ✅ AdminSignUpRequests.jsx
-import { useEffect, useState } from 'react';
-import supabase from '../utils/supabaseClient';
-import { useUpcomingDeliveries } from '../hooks/useUpcomingDeliveries';
+const loadBooks = async () => {
+  setLoading(true);
 
-export default function AdminSignUpRequests() {
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [expiringSoon, setExpiringSoon] = useState([]);
-  const [expiredMembers, setExpiredMembers] = useState([]);
-  const [missedDeliveries, setMissedDeliveries] = useState([]);
+  let query = supabase
+      .from('catalog')
+      .select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Thumbnail,Description')
+      .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
-  const { upcomingDeliveries, loading: loadingDeliveries, refreshUpcoming } = useUpcomingDeliveries();
+  if (appliedFilters) {
+    const { minAge, maxAge, author, title } = appliedFilters;
 
-  const fetchRequests = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('SignUpRequests')
-      .select('*')
-      .neq('status', 'APPROVED')
-      .order('created_at', { ascending: false });
+    let min = minAge ? parseInt(minAge) : null;
+    let max = maxAge ? parseInt(maxAge) : null;
 
-    if (error) {
-      console.error('Fetch error:', error.message);
-      setError(error);
-    } else {
-      setRequests(data);
+    if (min !== null && max === null) {
+      max = min;
+    } else if (max !== null && min === null) {
+      min = Math.max(0, max - 3);
     }
+
+    if (min !== null) query = query.gte('MaxAge', min);
+    if (max !== null) query = query.lte('MinAge', max);
+    if (author) query = query.ilike('Authors', `%${author}%`);
+    if (title) query = query.ilike('Title', `%${title}%`);
+  }
+
+  const { data: catalogBooks, error: catalogError } = await query;
+
+  if (catalogError) {
+    console.error('Error loading catalog:', catalogError);
     setLoading(false);
-  };
+    return;
+  }
 
-  const fetchMissedDeliveries = async () => {
-    const { data, error } = await supabase.rpc('get_missed_deliveries_30_days');
-    if (error) {
-      console.error('Failed to fetch missed deliveries:', error.message);
-    } else {
-      // Filter out inactive customers
-      setMissedDeliveries((data || []).filter((m) => m.isactive !== false));
+  const isbnList = catalogBooks.map(book => book.ISBN13);
+  const { data: copyinfo } = await supabase
+      .from('copyinfo')
+      .select('ISBN13, CopyBooked, AskPrice')
+      .in('ISBN13', isbnList);
+
+  const availabilityMap = {};
+  const priceMap = {};
+
+  for (const copy of copyinfo) {
+    if (!availabilityMap[copy.ISBN13]) availabilityMap[copy.ISBN13] = false;
+    if (!copy.CopyBooked) availabilityMap[copy.ISBN13] = true;
+
+    if (
+        copy.AskPrice !== null &&
+        (!priceMap[copy.ISBN13] || copy.AskPrice < priceMap[copy.ISBN13])
+    ) {
+      priceMap[copy.ISBN13] = copy.AskPrice;
     }
-  };
+  }
 
-  const updateStatus = async (id, newStatus) => {
-    const { error } = await supabase
-      .from('SignUpRequests')
-      .update({ status: newStatus })
-      .eq('id', id);
+  const readSet = new Set((hiddenRead || []).map(id => id?.trim().toLowerCase()));
 
-    if (error) {
-      alert(`Status update failed: ${error.message}`);
-    } else {
-      fetchRequests();
+  const droppedBooks = [];
+  const filteredBooks = catalogBooks.filter(book => {
+    const isbn = book.ISBN13?.trim().toLowerCase();
+    const isAvailable = availabilityMap[book.ISBN13];
+    const isRead = readSet.has(isbn);
+
+    if (!isbn) {
+      droppedBooks.push({ reason: 'Missing ISBN', book });
+      return false;
     }
-  };
-
-  const fetchMembershipInfo = async () => {
-    const today = new Date();
-    const nextWeek = new Date();
-    nextWeek.setDate(today.getDate() + 7);
-
-    const { data: soonExpiring } = await supabase
-      .from('customerinfo')
-      .select('CustomerName, EmailID, ContactNo, EndDate')
-      .eq('IsActive', true)
-      .gte('EndDate', today.toISOString())
-      .lte('EndDate', nextWeek.toISOString())
-      .order('EndDate');
-
-    const { data: alreadyExpired } = await supabase
-      .from('customerinfo')
-      .select('CustomerName, EmailID, ContactNo, EndDate')
-      .eq('IsActive', true)
-      .lt('EndDate', today.toISOString())
-      .order('EndDate');
-
-    setExpiringSoon(soonExpiring || []);
-    setExpiredMembers(alreadyExpired || []);
-  };
-
-  const handleRecommendRest = async (delivery) => {
-    try {
-      const remaining = delivery.quota - delivery.selectedCount;
-      if (remaining <= 0) return;
-
-      const { error } = await supabase.rpc('recommend_books_for_user', {
-        user_id: delivery.userid,
-        num_books: remaining,
-        min_age: delivery.childAge,
-        max_age: delivery.childAge,
-      });
-
-      if (error) {
-        alert(`Failed to recommend books: ${error.message}`);
-      } else {
-        alert('Recommended books successfully!');
-        refreshUpcoming();
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Unexpected error.');
+    if (!isAvailable) {
+      droppedBooks.push({ reason: 'No available copies', book });
+      return false;
     }
-  };
+    if (isRead) {
+      droppedBooks.push({ reason: 'Already read by user', book });
+      return false;
+    }
 
-  useEffect(() => {
-    fetchRequests();
-    fetchMembershipInfo();
-    fetchMissedDeliveries();
-  }, []);
+    return true;
+  });
 
-  const activeDeliveries = upcomingDeliveries.filter((d) => d.isactive !== false);
+  console.log('--- Debug Report ---');
+  console.log(`Total catalog books fetched: ${catalogBooks.length}`);
+  console.log(`Books with available copies: ${catalogBooks.filter(book => availabilityMap[book.ISBN13]).length}`);
+  console.log(`Books shown after filtering: ${filteredBooks.length}`);
 
-  if (loading) return <div className="p-4">Loading sign-up requests...</div>;
-  if (error) return <div className="p-4 text-red-600">Error: {error.message}</div>;
+  console.log('Dropped books with reasons:');
+  droppedBooks.forEach(entry => {
+    console.log(`[${entry.reason}] ${entry.book.Title} (${entry.book.ISBN13})`);
+  });
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Sign-Up Requests</h1>
-      <div className="overflow-x-auto mb-8">
-        <table className="min-w-full border border-gray-300 text-sm">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="border p-2">Name</th>
-              <th className="border p-2">Email</th>
-              <th className="border p-2">Phone</th>
-              <th className="border p-2">Child 1</th>
-              <th className="border p-2">DOB 1</th>
-              <th className="border p-2">Child 2</th>
-              <th className="border p-2">DOB 2</th>
-              <th className="border p-2">Address</th>
-              <th className="border p-2">Message</th>
-              <th className="border p-2">Status</th>
-              <th className="border p-2">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {requests.map((r) => (
-              <tr key={r.id}>
-                <td className="border p-2">{r.name}</td>
-                <td className="border p-2">{r.email}</td>
-                <td className="border p-2">{r.phone}</td>
-                <td className="border p-2">{r.child1_name}</td>
-                <td className="border p-2">{new Date(r.child1_dob).toLocaleDateString()}</td>
-                <td className="border p-2">{r.child2_name}</td>
-                <td className="border p-2">{r.child2_dob ? new Date(r.child2_dob).toLocaleDateString() : '-'}</td>
-                <td className="border p-2 whitespace-pre-wrap">{r.address}</td>
-                <td className="border p-2 whitespace-pre-wrap">{r.message}</td>
-                <td className="border p-2 text-center">{r.status}</td>
-                <td className="border p-2 space-x-2">
-                  <button className="bg-green-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'APPROVED')}>Approve</button>
-                  <button className="bg-red-500 text-white px-2 py-1 rounded" onClick={() => updateStatus(r.id, 'REJECTED')}>Reject</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+  console.log('Books included in catalog:');
+  filteredBooks.forEach(book => {
+    console.log(`[INCLUDED] ${book.Title} (${book.ISBN13})`);
+  });
 
-      <h2 className="text-xl font-bold mb-2">📆 Memberships expiring in the next 7 days</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {expiringSoon.length === 0 ? (
-          <li>No expiring memberships.</li>
-        ) : (
-          expiringSoon.map((m, idx) => (
-            <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expires on {new Date(m.EndDate).toLocaleDateString()}
-            </li>
-          ))
-        )}
-      </ul>
+  filteredBooks.forEach(book => {
+    book.minPrice = priceMap[book.ISBN13] ?? null;
+  });
 
-      <h2 className="text-xl font-bold mb-2 text-red-700">❌ Expired Memberships</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {expiredMembers.length === 0 ? (
-          <li>No expired memberships.</li>
-        ) : (
-          expiredMembers.map((m, idx) => (
-            <li key={idx}>
-              <strong>{m.CustomerName}</strong> — {m.EmailID} — {m.ContactNo} — expired on {new Date(m.EndDate).toLocaleDateString()}
-            </li>
-          ))
-        )}
-      </ul>
-
-      <h2 className="text-xl font-bold mb-2 text-green-700">🚚 Upcoming Deliveries in Next 7 Days</h2>
-      {loadingDeliveries ? (
-        <p className="text-sm">Loading upcoming deliveries...</p>
-      ) : (
-        <ul className="list-disc list-inside text-sm">
-          {activeDeliveries.length === 0 ? (
-            <li>No deliveries scheduled in next 7 days.</li>
-          ) : (
-            activeDeliveries.map((d, idx) => (
-              <li key={idx}>
-                <strong>{d.customername}</strong> — {d.emailid} — {d.contactno}<br />
-                Plan: {d.plan}, Books: {d.selectedCount} of {d.quota}, Age: {d.childAge}<br />
-                Next delivery on <strong>{d.nextDate ? new Date(d.nextDate).toLocaleDateString() : 'TBD'}</strong>
-                {d.selectedCount < d.quota && (
-                  <button
-                    className="mt-1 ml-2 text-sm bg-blue-500 text-white px-2 py-1 rounded"
-                    onClick={() => handleRecommendRest(d)}
-                  >
-                    📚 Recommend Rest
-                  </button>
-                )}
-              </li>
-            ))
-          )}
-        </ul>
-      )}
-
-      <h2 className="text-xl font-bold mb-2 text-red-600">⚠️ Missed Deliveries in Last 30 Days</h2>
-      <ul className="list-disc list-inside text-sm mb-6">
-        {missedDeliveries.length === 0 ? (
-          <li>No missed deliveries found in the last 30 days.</li>
-        ) : (
-          missedDeliveries.map((m, idx) => (
-            <li key={idx} className="mb-2">
-              <strong>{m.customername}</strong> — {m.emailid} — {m.contactno}<br />
-              Plan: {m.plan}, Quota: {m.quota}<br />
-              Expected delivery on <strong>{new Date(m.next_expected_date).toLocaleDateString()}</strong>
-            </li>
-          ))
-        )}
-      </ul>
-    </div>
-  );
-}
+  const randomized = filteredBooks.sort(() => 0.5 - Math.random());
+  setBooks(randomized.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
+  setLoading(false);
+};
