@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { useCatalog } from '../contexts/CatalogContext';
-
 
 export default function FindBooks() {
     const [filters, setFilters] = useState({ age: '', tag: '', author: '', title: '' });
@@ -11,15 +9,17 @@ export default function FindBooks() {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-    const { availableBooks } = useCatalog();
-
     const handleChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
     };
 
-    const handleSearch = () => {
+    const handleSearch = async () => {
         console.log("Search clicked!");
         setLoading(true);
+
+        let query = supabase
+            .from('catalog')
+            .select('BookID,ISBN13,Title,Authors,MinAge,MaxAge,Tags,Thumbnail,Description');
 
         const ageNum = parseFloat(filters.age);
         const hasAge = !isNaN(ageNum);
@@ -27,16 +27,79 @@ export default function FindBooks() {
         const hasAuthor = filters.author.trim() !== '';
         const hasTitle = filters.title.trim() !== '';
 
-        const filtered = availableBooks.filter(book => {
-            const matchesAge = hasAge ? ageNum >= book.MinAge && ageNum <= book.MaxAge : true;
-            const matchesTag = hasTag ? (book.Tags || '').toLowerCase().includes(filters.tag.toLowerCase()) : true;
-            const matchesAuthor = hasAuthor ? (book.Authors || '').toLowerCase().includes(filters.author.toLowerCase()) : true;
-            const matchesTitle = hasTitle ? (book.Title || '').toLowerCase().includes(filters.title.toLowerCase()) : true;
+        // Apply filters
+        if (hasAge) {
+            console.log("has age");
+            query = query
+                .filter('MinAge', 'lte', ageNum)
+                .filter('MaxAge', 'gte', ageNum);
+           // query = query.gte('MinAge', ageNum).lte('MaxAge', ageNum);
+        }
 
-            return matchesAge && matchesTag && matchesAuthor && matchesTitle;
+        if (hasAuthor) {
+            console.log("has author");
+
+            query = query.ilike('Authors', `%${filters.author.trim()}%`);
+        }
+
+        if (hasTitle) {
+            console.log("has title");
+            query = query.ilike('Title', `%${filters.title.trim()}%`);
+        }
+
+        if (hasTag) {
+            console.log("has tags");
+            query = query.ilike('Tags', `%${filters.tag.trim()}%`);
+        }
+
+        // Run the query
+        const { data: catalogBooks, error } = await query;
+
+        if (error) {
+            console.error('Error fetching filtered books:', error);
+            setLoading(false);
+            return;
+        }
+
+        /// filter books
+        const isbnList = catalogBooks.map(book => book.ISBN13);
+        const { data: copyinfo } = await supabase
+            .from('copyinfo')
+            .select('ISBN13, CopyBooked, AskPrice')
+            .in('ISBN13', isbnList);
+
+        const availabilityMap = {};
+        const priceMap = {};
+        for (const copy of copyinfo) {
+            if (!availabilityMap[copy.ISBN13]) availabilityMap[copy.ISBN13] = false;
+            if (!copy.CopyBooked) availabilityMap[copy.ISBN13] = true;
+            if (copy.AskPrice !== null && (!priceMap[copy.ISBN13] || copy.AskPrice < priceMap[copy.ISBN13])) {
+                priceMap[copy.ISBN13] = copy.AskPrice;
+            }
+        }
+
+        //const readSet = new Set((hiddenRead || []).map(id => id?.trim().toLowerCase()));
+        const readSet = new Set();
+        const { data: allFutureRequests } = await supabase
+            .from('circulationfuture')
+            .select('ISBN13');
+
+        const globallyRequestedISBNs = new Set(
+            (allFutureRequests || []).map(r => r.ISBN13?.trim().toLowerCase())
+        );
+
+        const filteredBooks = catalogBooks.filter(book => {
+            const isbn = book.ISBN13?.trim().toLowerCase();
+            return (
+                isbn &&
+                availabilityMap[book.ISBN13] &&
+                !readSet.has(isbn) &&
+                !globallyRequestedISBNs.has(isbn)
+            );
         });
 
-        const shuffled = filtered.sort(() => 0.5 - Math.random());
+        // Shuffle results
+        const shuffled = (filteredBooks || []).sort(() => 0.5 - Math.random());
         setResults(shuffled);
         setLoading(false);
     };
@@ -44,19 +107,15 @@ export default function FindBooks() {
     const toggleSelection = (book) => {
         setSelectedBooks((prev) => {
             const exists = prev.find((b) => b.ISBN13 === book.ISBN13);
-            if (exists) {
-                return prev.filter((b) => b.ISBN13 !== book.ISBN13);
-            } else {
-                return [...prev, book];
-            }
+            return exists
+                ? prev.filter((b) => b.ISBN13 !== book.ISBN13)
+                : [...prev, book];
         });
     };
 
-
     const handleShowCollage = () => {
-        navigate('/collage', { state: { selectedBooks } }); // ✅ pass the state
+        navigate('/collage', { state: { selectedBooks } });
     };
-
 
     return (
         <div className="p-6 max-w-4xl mx-auto">
@@ -97,7 +156,7 @@ export default function FindBooks() {
                 <button
                     onClick={handleSearch}
                     onTouchEnd={(e) => {
-                        e.preventDefault(); // Prevent iOS from misfiring
+                        e.preventDefault(); // Prevent iOS double-fire
                         handleSearch();
                     }}
                     className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 w-full sm:w-auto"
@@ -115,26 +174,38 @@ export default function FindBooks() {
                 )}
             </div>
 
-
             {loading && <p className="mt-4 text-gray-600">Searching...</p>}
 
-            <div className="mt-6 grid gap-4">
-                {results.length === 0 && !loading ? (
+            <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+
+                {!loading && results.length === 0 ? (
                     <p>No books found.</p>
                 ) : (
                     results.map((book, index) => (
                         <div
                             key={index}
                             className={`border p-4 rounded shadow cursor-pointer ${
-                                selectedBooks.some((b) => b.ISBN13 === book.ISBN13) ? 'bg-yellow-100 border-yellow-400' : ''
+                                selectedBooks.some((b) => b.ISBN13 === book.ISBN13)
+                                    ? 'bg-yellow-100 border-yellow-400'
+                                    : ''
                             }`}
                             onClick={() => toggleSelection(book)}
                         >
-                            <h2 className="text-lg font-semibold">{book.title}</h2>
-                            {book.Thumbnail && <img src={book.Thumbnail} alt={book.Title} className="w-36 h-56 object-cover rounded-lg shadow-md" />}
+                            <h2 className="text-lg font-semibold">{book.Title}</h2>
+                            {book.Thumbnail ? (
+                                <img
+                                    src={book.Thumbnail}
+                                    alt={book.Title}
+                                    className="w-36 h-56 object-cover rounded-lg shadow-md my-2"
+                                />
+                            ) : (
+                                <div className="w-36 h-56 bg-gray-200 flex items-center justify-center my-2 rounded-lg">
+                                    <span className="text-gray-500 text-sm">No Image</span>
+                                </div>
+                            )}
                             <p><strong>Author:</strong> {book.Authors}</p>
                             <p><strong>Age Group:</strong> {book.MinAge} - {book.MaxAge}</p>
-                            <p><strong>Tags:</strong> {Array.isArray(book.Tags) ? book.Tags.join(', ') : book.Tags}</p>
+                            <p><strong>Tags:</strong> {Array.isArray(book.Tags) ? book.Tags.join(', ') : book.Tags || '—'}</p>
                         </div>
                     ))
                 )}
