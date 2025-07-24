@@ -8,6 +8,7 @@ export default function FindBooks() {
     const [selectedBooks, setSelectedBooks] = useState([]);
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+    const [showCollage, setShowCollage] = useState(false);
 
     const handleChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -114,7 +115,7 @@ export default function FindBooks() {
     };
 
     const handleShowCollage = () => {
-        navigate('/collage', { state: { selectedBooks } });
+        setShowCollage((prev) => !prev);
     };
 
     return (
@@ -169,9 +170,10 @@ export default function FindBooks() {
                         onClick={handleShowCollage}
                         className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full sm:w-auto"
                     >
-                        Show Collage of Selected Books
+                        {showCollage ? 'Hide Collage' : 'Show Collage of Selected Books'}
                     </button>
                 )}
+
             </div>
 
             {loading && <p className="mt-4 text-gray-600">Searching...</p>}
@@ -203,6 +205,23 @@ export default function FindBooks() {
                     ))
                 )}
             </div>
+            {showCollage && selectedBooks.length > 0 && (
+                <div className="mt-8">
+                    <h2 className="text-xl font-semibold mb-4">Book Collage</h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        {selectedBooks.map((book, index) => (
+                            <div key={index} className="flex flex-col items-center">
+                                <img
+                                    src={book.Thumbnail}
+                                    alt={book.Title}
+                                    className="w-24 h-32 object-cover rounded shadow"
+                                />
+                                <p className="text-sm mt-2 text-center">{book.Title}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
