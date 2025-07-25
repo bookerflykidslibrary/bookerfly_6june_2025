@@ -228,7 +228,7 @@ export default function FindBooks() {
                                                     <img
                                                         src={selected.Thumbnail}
                                                         alt={selected.Title}
-                                                        className="w-24 h-32 object-cover rounded shadow"
+                                                        className="w-40 h-60 object-contain rounded-lg shadow-md bg-white border"
                                                     />
                                                     <p className="text-sm mt-2 text-center">{selected.Title}</p>
                                                 </div>
