@@ -220,7 +220,7 @@ export default function FindBooks() {
 
                                 {/* Show collage right after the last selected book */}
                                 {showCollage && index === lastSelectedIndex && selectedBooks.length > 0 && (
-                                    <div className="col-span-full mt-4">
+                                    <div className="col-span-full mt-4 border-4 border-blue-500 rounded-xl p-4 shadow-lg bg-white">
                                         <h2 className="text-xl font-semibold mb-2">Book Collage</h2>
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                                             {selectedBooks.map((selected, i) => (
@@ -236,27 +236,12 @@ export default function FindBooks() {
                                         </div>
                                     </div>
                                 )}
+
                             </React.Fragment>
                         ))
                 )}
             </div>
-            {showCollage && selectedBooks.length > 0 && (
-                <div className="mt-8">
-                    <h2 className="text-xl font-semibold mb-4">Book Collage</h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                        {selectedBooks.map((book, index) => (
-                            <div key={index} className="flex flex-col items-center">
-                                <img
-                                    src={book.Thumbnail}
-                                    alt={book.Title}
-                                    className="w-24 h-32 object-cover rounded shadow"
-                                />
-                                <p className="text-sm mt-2 text-center">{book.Title}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+
         </div>
     );
 }
