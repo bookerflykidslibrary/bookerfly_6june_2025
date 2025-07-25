@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import supabase from '../utils/supabaseClient';
 import { useNavigate } from 'react-router-dom';
+import React from 'react';
 
 export default function FindBooks() {
     const [filters, setFilters] = useState({ age: '', tag: '', author: '', title: '' });
@@ -9,6 +10,7 @@ export default function FindBooks() {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
     const [showCollage, setShowCollage] = useState(false);
+    const [lastSelectedIndex, setLastSelectedIndex] = useState(null);
 
     const handleChange = (e) => {
         setFilters({ ...filters, [e.target.name]: e.target.value });
@@ -105,14 +107,18 @@ export default function FindBooks() {
         setLoading(false);
     };
 
-    const toggleSelection = (book) => {
+    const toggleSelection = (book, index) => {
         setSelectedBooks((prev) => {
             const exists = prev.find((b) => b.ISBN13 === book.ISBN13);
-            return exists
-                ? prev.filter((b) => b.ISBN13 !== book.ISBN13)
-                : [...prev, book];
+            if (exists) {
+                return prev.filter((b) => b.ISBN13 !== book.ISBN13);
+            } else {
+                setLastSelectedIndex(index); // track this index
+                return [...prev, book];
+            }
         });
     };
+
 
     const handleShowCollage = () => {
         setShowCollage((prev) => !prev);
@@ -153,7 +159,7 @@ export default function FindBooks() {
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 mt-4">
+            <div className="sticky top-0 z-10 bg-white py-2 shadow-sm flex flex-col sm:flex-row gap-4 mt-4">
                 <button
                     onClick={handleSearch}
                     onTouchEnd={(e) => {
@@ -165,16 +171,25 @@ export default function FindBooks() {
                     Search
                 </button>
 
-                {selectedBooks.length > 0 && (
-                    <button
-                        onClick={handleShowCollage}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full sm:w-auto"
-                    >
-                        {showCollage ? 'Hide Collage' : 'Show Collage of Selected Books'}
-                    </button>
-                )}
 
             </div>
+            {selectedBooks.length > 0 && (
+                <div className="fixed bottom-6 right-6 flex flex-col gap-2 z-50">
+                    <button
+                        onClick={() => setShowCollage(true)}
+                        className="bg-green-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-green-700"
+                    >
+                        Show Collage
+                    </button>
+                    <button
+                        onClick={() => setShowCollage(false)}
+                        className="bg-red-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-red-700"
+                    >
+                        Hide Collage
+                    </button>
+                </div>
+            )}
+
 
             {loading && <p className="mt-4 text-gray-600">Searching...</p>}
 
@@ -184,25 +199,45 @@ export default function FindBooks() {
                     <p>No books found.</p>
                 ) : (
                     results.map((book, index) => (
-                        <div
-                            key={index}
-                            className={`border p-2 rounded shadow text-sm cursor-pointer flex flex-col items-center text-center ${
-                                selectedBooks.some((b) => b.ISBN13 === book.ISBN13) ? 'bg-yellow-100 border-yellow-400' : ''
-                            }`}
-                            onClick={() => toggleSelection(book)}
-                        >
-                            {book.Thumbnail && (
-                                <img
-                                    src={book.Thumbnail}
-                                    alt={book.Title}
-                                    className="w-20 h-28 object-cover rounded mb-2"
-                                />
-                            )}
-                            <h2 className="font-semibold truncate w-full">{book.Title}</h2>
-                            <p className="text-gray-700 truncate w-full"><strong>Author:</strong> {book.Authors}</p>
-                            <p className="text-gray-600 text-xs"><strong>Age:</strong> {book.MinAge} - {book.MaxAge}</p>
-                        </div>
-                    ))
+                            <React.Fragment key={index}>
+                                <div
+                                    className={`border p-2 rounded shadow text-sm cursor-pointer flex flex-col items-center text-center ${
+                                        selectedBooks.some((b) => b.ISBN13 === book.ISBN13) ? 'bg-yellow-100 border-yellow-400' : ''
+                                    }`}
+                                    onClick={() => toggleSelection(book, index)}
+                                >
+                                    {book.Thumbnail && (
+                                        <img
+                                            src={book.Thumbnail}
+                                            alt={book.Title}
+                                            className="w-20 h-28 object-cover rounded mb-2"
+                                        />
+                                    )}
+                                    <h2 className="font-semibold truncate w-full">{book.Title}</h2>
+                                    <p className="text-gray-700 truncate w-full"><strong>Author:</strong> {book.Authors}</p>
+                                    <p className="text-gray-600 text-xs"><strong>Age:</strong> {book.MinAge} - {book.MaxAge}</p>
+                                </div>
+
+                                {/* Show collage right after the last selected book */}
+                                {showCollage && index === lastSelectedIndex && selectedBooks.length > 0 && (
+                                    <div className="col-span-full mt-4">
+                                        <h2 className="text-xl font-semibold mb-2">Book Collage</h2>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                            {selectedBooks.map((selected, i) => (
+                                                <div key={i} className="flex flex-col items-center">
+                                                    <img
+                                                        src={selected.Thumbnail}
+                                                        alt={selected.Title}
+                                                        className="w-24 h-32 object-cover rounded shadow"
+                                                    />
+                                                    <p className="text-sm mt-2 text-center">{selected.Title}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </React.Fragment>
+                        ))
                 )}
             </div>
             {showCollage && selectedBooks.length > 0 && (
