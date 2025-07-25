@@ -1,7 +1,7 @@
 //  /src/pages/admin/EditBook.jsx
 import { useEffect, useState } from 'react';
 import supabase from '../../utils/supabaseClient';
-import { useNavigate } from 'react-router-dom';
+//import { useNavigate } from 'react-router-dom';
 
 export default function EditBook() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -11,9 +11,9 @@ export default function EditBook() {
     const [allTags, setAllTags] = useState([]);
     const [newTag, setNewTag] = useState('');
     const [copies, setCopies] = useState([]);
-    const [error, setError] = useState(null);
+    //const [error, setError] = useState(null);
 
-    const navigate = useNavigate();
+    //const navigate = useNavigate();
 
     useEffect(() => {
         const fetchTags = async () => {
@@ -57,6 +57,37 @@ export default function EditBook() {
             ? prev.filter(t => t !== tag)
             : [...prev, tag]
         );
+    };
+
+    const handleThumbnailUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file || !selectedBook.ISBN13) return;
+
+        const fileExt = file.name.split('.').pop();
+        const filePath = `${selectedBook.ISBN13}/${Date.now()}.${fileExt}`;
+
+        const { data, error: uploadError } = await supabase.storage
+            .from('bookassets')
+            .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: true,
+            });
+
+        if (uploadError) {
+            alert('Error uploading image: ' + uploadError.message);
+            return;
+        }
+
+        const { data: publicUrlData } = supabase
+            .storage
+            .from('bookassets')
+            .getPublicUrl(filePath);
+
+        const url = publicUrlData?.publicUrl;
+        if (url) {
+            setSelectedBook(prev => ({ ...prev, Thumbnail: url }));
+            alert('Thumbnail uploaded successfully!');
+        }
     };
 
     const handleAddTag = async () => {
@@ -149,8 +180,30 @@ export default function EditBook() {
                             <input className="w-full p-2 border rounded" value={selectedBook.ISBN13 || ''} onChange={e => setSelectedBook({ ...selectedBook, ISBN13: e.target.value })} />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium">Thumbnail URL</label>
-                            <input className="w-full p-2 border rounded" value={selectedBook.Thumbnail || ''} onChange={e => setSelectedBook({ ...selectedBook, Thumbnail: e.target.value })} />
+                            <div>
+                                <label className="block text-sm font-medium">Thumbnail</label>
+
+                                {selectedBook.Thumbnail && (
+                                    <img src={selectedBook.Thumbnail} alt="Thumbnail" className="w-32 h-auto mb-2 border" />
+                                )}
+
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment" // enables camera on phones
+                                    onChange={handleThumbnailUpload}
+                                    className="w-full p-2 border rounded mb-2"
+                                />
+
+                                <input
+                                    type="text"
+                                    value={selectedBook.Thumbnail || ''}
+                                    onChange={e => setSelectedBook({ ...selectedBook, Thumbnail: e.target.value })}
+                                    className="w-full p-2 border rounded"
+                                    placeholder="Or paste thumbnail URL manually"
+                                />
+                            </div>
+
                         </div>
                     </div>
 
